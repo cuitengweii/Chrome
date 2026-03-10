@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GasGx Collector Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <h1>GasGx Collector</h1>
+      <p>Manage category options and page rules by platform and address pattern.</p>
+    </section>
+
+    <section class="grid">
+      <aside class="panel">
+        <h2>General</h2>
+        <label>
+          Categories
+          <textarea id="categoryOptions" placeholder="One category per line"></textarea>
+        </label>
+        <label>
+          Default Category
+          <select id="defaultCategory"></select>
+        </label>
+        <label>
+          Default Publisher
+          <input id="defaultPublisher" type="text" placeholder="GasGx Web">
+        </label>
+        <div class="actions">
+          <button id="saveSettings" type="button">Save Settings</button>
+          <button id="resetSettings" class="secondary" type="button">Reset Defaults</button>
+        </div>
+        <div id="status" class="status"></div>
+      </aside>
+
+      <section class="rules-section">
+        <div class="panel">
+          <h2>Page Rules</h2>
+          <p class="muted">Each card below maps to one platform and one address rule. Edit selectors if LinkedIn or X changes layout.</p>
+        </div>
+        <div id="ruleGroups"></div>
+      </section>
+    </section>
+  </main>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

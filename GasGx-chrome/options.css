@@ -1,0 +1,148 @@
+body {
+  margin: 0;
+  font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+  background: #f3f7fb;
+  color: #0f172a;
+}
+
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.hero,
+.panel,
+.rule-card {
+  border: 1px solid #dbe4ee;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.hero {
+  padding: 24px;
+  margin-bottom: 18px;
+}
+
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.hero p {
+  margin: 0;
+  color: #475569;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.panel {
+  padding: 18px;
+}
+
+.panel h2,
+.rules-section h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+label {
+  display: block;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+button {
+  border: 1px solid #0a66c2;
+  border-radius: 999px;
+  background: #0a66c2;
+  color: #fff;
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #fff;
+  color: #0a66c2;
+}
+
+.muted {
+  color: #64748b;
+}
+
+.rules-section {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.rule-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rule-card {
+  padding: 16px;
+}
+
+.rule-card h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.rule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rule-grid .full {
+  grid-column: 1 / -1;
+}
+
+.status {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #057642;
+}
+
+@media (max-width: 920px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rule-grid {
+    grid-template-columns: 1fr;
+  }
+}
