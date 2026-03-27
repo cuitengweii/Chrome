@@ -3,58 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NotebookLM 来源刷新器</title>
+  <title>空来Ai-NotebookLM辅助器</title>
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
   <main class="popup-shell">
     <section class="hero-card">
       <div>
-        <p class="eyebrow">NotebookLM</p>
-        <h1>来源刷新器</h1>
-        <p id="heroSummary" class="hero-summary">正在读取当前定时状态。</p>
+        <div class="hero-top">
+          <p class="eyebrow" data-i18n="popup.brand"></p>
+          <label class="locale-wrap">
+            <select id="localeSelect" aria-label="Language"></select>
+          </label>
+        </div>
+        <h1 data-i18n="popup.titleShort"></h1>
+        <p id="heroSummary" class="hero-summary"></p>
       </div>
-      <span id="timerPill" class="timer-pill">加载中</span>
+      <span id="timerPill" class="timer-pill"></span>
     </section>
 
     <section class="status-grid">
       <article class="status-card" data-tone="good">
-        <span class="status-label">定时状态</span>
-        <strong id="scheduleLabel">加载中</strong>
-        <p id="scheduleDetail">正在读取下一次执行时间。</p>
+        <span class="status-label" data-i18n="popup.scheduleStatus"></span>
+        <strong id="scheduleLabel"></strong>
+        <p id="scheduleDetail"></p>
       </article>
 
       <article class="status-card" data-tone="muted">
-        <span class="status-label">最近结果</span>
-        <strong id="resultLabel">加载中</strong>
-        <p id="resultDetail">正在读取最近一次执行结果。</p>
+        <span class="status-label" data-i18n="popup.resultStatus"></span>
+        <strong id="resultLabel"></strong>
+        <p id="resultDetail"></p>
       </article>
 
       <article class="status-card" data-tone="muted">
-        <span class="status-label">目标规则</span>
-        <strong id="ruleLabel">加载中</strong>
-        <p id="ruleDetail">正在读取来源与刷新入口配置。</p>
+        <span class="status-label" data-i18n="popup.ruleStatus"></span>
+        <strong id="ruleLabel"></strong>
+        <p id="ruleDetail"></p>
       </article>
     </section>
 
     <section class="action-grid">
-      <button id="runNow" class="primary-button" type="button">立即运行</button>
-      <button id="openNotebook" class="secondary-button" type="button">打开 Notebook</button>
-      <button id="toggleEnabled" class="secondary-button" type="button">暂停定时</button>
-      <button id="openOptions" class="ghost-button" type="button">打开设置</button>
+      <button id="runNow" class="primary-button" type="button" data-i18n="popup.runNow"></button>
+      <button id="openNotebook" class="secondary-button" type="button" data-i18n="popup.openNotebook"></button>
+      <button id="toggleEnabled" class="secondary-button" type="button"></button>
+      <button id="openManager" class="secondary-button" type="button" data-i18n="popup.openManager"></button>
+      <button id="openOptions" class="ghost-button" type="button" data-i18n="popup.openOptions"></button>
     </section>
 
     <section class="log-card">
       <div class="log-header">
-        <span class="status-label">最近日志</span>
-        <span id="buildInfo" class="build-info">版本加载中</span>
+        <span class="status-label" data-i18n="popup.logsTitle"></span>
+        <span id="buildInfo" class="build-info"></span>
       </div>
       <ul id="logList" class="log-list">
-        <li class="empty-log">暂无运行记录。</li>
+        <li class="empty-log" data-i18n="popup.logsEmpty"></li>
       </ul>
     </section>
 
-    <p id="popupStatus" class="popup-status">就绪。</p>
+    <p id="popupStatus" class="popup-status"></p>
   </main>
   <script type="module" src="popup.js"></script>
 </body>

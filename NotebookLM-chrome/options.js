@@ -1,18 +1,36 @@
 ﻿import {
-  RESULT_LABELS,
-  MODE_LABELS,
-  normalizeRule
+  normalizeRule,
+  normalizeNotebookUrl
 } from "./settings.js";
+import {
+  getLocale,
+  setLocale,
+  fillLocaleSelect,
+  t,
+  applyI18n,
+  localizeResult,
+  localizeMode
+} from "./i18n.js";
 
 const saveRuleButton = document.getElementById("saveRule");
 const runNowButton = document.getElementById("runNow");
 const openNotebookButton = document.getElementById("openNotebook");
+const fetchNotebooksButton = document.getElementById("fetchNotebooks");
+const appendNotebooksButton = document.getElementById("appendNotebooks");
+const appendSourcesForSelectedButton = document.getElementById("appendSourcesForSelected");
+const addRuleRowButton = document.getElementById("addRuleRow");
+const selectAllVisibleButton = document.getElementById("selectAllVisible");
+const clearSelectionButton = document.getElementById("clearSelection");
+const localeSelect = document.getElementById("localeSelect");
 
 const enabledInput = document.getElementById("enabled");
 const intervalMinutesInput = document.getElementById("intervalMinutes");
-const notebookUrlsInput = document.getElementById("notebookUrls");
-const sourceLabelInput = document.getElementById("sourceLabel");
+const targetLinesInput = document.getElementById("targetLines");
 const refreshLabelInput = document.getElementById("refreshLabel");
+const notebookPicker = document.getElementById("notebookPicker");
+const notebookSearchInput = document.getElementById("notebookSearch");
+const pickerSelectionCount = document.getElementById("pickerSelectionCount");
+const ruleRows = document.getElementById("ruleRows");
 
 const runtimeResult = document.getElementById("runtimeResult");
 const runtimeLastRun = document.getElementById("runtimeLastRun");
@@ -23,15 +41,15 @@ const runtimeMessage = document.getElementById("runtimeMessage");
 const logList = document.getElementById("logList");
 const formStatus = document.getElementById("formStatus");
 const buildInfo = document.getElementById("buildInfo");
-const formInputs = [
-  enabledInput,
-  intervalMinutesInput,
-  notebookUrlsInput,
-  sourceLabelInput,
-  refreshLabelInput
-];
+const formInputs = [enabledInput, intervalMinutesInput, refreshLabelInput];
 
+let locale = "zh-CN";
 let isDirty = false;
+let notebookCache = [];
+let ruleRowsState = [];
+let notebookSelectedUrls = new Set();
+let notebookSearchKeyword = "";
+let lastSnapshot = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -43,97 +61,300 @@ function escapeHtml(value) {
 }
 
 function setStatus(message) {
-  formStatus.textContent = message;
+  formStatus.textContent = String(message || "");
 }
 
 function formatTime(isoString) {
-  return isoString ? new Date(isoString).toLocaleString() : "从未";
+  return isoString ? new Date(isoString).toLocaleString() : t(locale, "common.never");
 }
 
 function formatScheduledTime(alarm) {
-  if (!alarm?.scheduledTime) return "未计划";
+  if (!alarm?.scheduledTime) return t(locale, "common.notScheduled");
   return new Date(alarm.scheduledTime).toLocaleString();
+}
+
+function serializeRowsToTargetLines(rows) {
+  return rows
+    .map((row) => ({
+      notebookUrl: normalizeNotebookUrl(row.notebookUrl || "", ""),
+      sourceLabel: String(row.sourceLabel || "").trim()
+    }))
+    .filter((row) => row.notebookUrl && row.sourceLabel)
+    .map((row) => `${row.notebookUrl} | ${row.sourceLabel}`)
+    .join("\n");
+}
+
+function readRowsFromDom() {
+  const rows = [];
+  for (const item of ruleRows.querySelectorAll("li.rule-row")) {
+    const urlInput = item.querySelector("input[data-role='url']");
+    const sourceInput = item.querySelector("input[data-role='source']");
+    rows.push({
+      notebookUrl: String(urlInput?.value || "").trim(),
+      sourceLabel: String(sourceInput?.value || "").trim()
+    });
+  }
+  return rows;
+}
+
+function syncHiddenTargetLines() {
+  targetLinesInput.value = serializeRowsToTargetLines(readRowsFromDom());
+}
+
+function bindRowInputs(li) {
+  const inputs = li.querySelectorAll("input");
+  inputs.forEach((input) => {
+    input.addEventListener("input", () => {
+      isDirty = true;
+      syncHiddenTargetLines();
+    });
+    input.addEventListener("change", () => {
+      isDirty = true;
+      syncHiddenTargetLines();
+    });
+  });
+}
+
+function addRow(row = { notebookUrl: "", sourceLabel: "" }) {
+  const li = document.createElement("li");
+  li.className = "rule-row";
+  li.innerHTML = `
+    <input data-role="url" type="url" placeholder="${escapeHtml(t(locale, "options.rowUrlPlaceholder"))}" value="${escapeHtml(row.notebookUrl || "")}">
+    <input data-role="source" type="text" placeholder="${escapeHtml(t(locale, "options.rowSourcePlaceholder"))}" value="${escapeHtml(row.sourceLabel || "")}">
+    <button data-role="remove" class="danger-button" type="button">${escapeHtml(t(locale, "options.rowRemove"))}</button>
+  `;
+
+  const removeButton = li.querySelector("button[data-role='remove']");
+  removeButton.addEventListener("click", () => {
+    li.remove();
+    if (!ruleRows.querySelector("li.rule-row")) {
+      renderRows([]);
+    }
+    isDirty = true;
+    syncHiddenTargetLines();
+  });
+
+  bindRowInputs(li);
+  ruleRows.appendChild(li);
+}
+
+function renderRows(rows) {
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  ruleRows.innerHTML = "";
+
+  if (!normalizedRows.length) {
+    const empty = document.createElement("li");
+    empty.className = "empty-log";
+    empty.textContent = t(locale, "options.rowEmpty");
+    ruleRows.appendChild(empty);
+    targetLinesInput.value = "";
+    return;
+  }
+
+  normalizedRows.forEach((row) => addRow(row));
+  syncHiddenTargetLines();
+}
+
+function getCachedTitleByUrl(url) {
+  const item = notebookCache.find((node) => node.url === url);
+  return item?.title || "";
 }
 
 function renderRule(rule, { force = false } = {}) {
   if (!force && isDirty) return;
+
   enabledInput.checked = rule.enabled;
   intervalMinutesInput.value = String(rule.intervalMinutes);
-  notebookUrlsInput.value = (rule.notebookUrls || []).join("\n");
-  sourceLabelInput.value = rule.sourceLabel;
   refreshLabelInput.value = rule.refreshLabel;
+
+  ruleRowsState = (rule.targets || []).map((target) => ({
+    notebookUrl: target.notebookUrl,
+    sourceLabel: target.sourceLabel
+  }));
+  renderRows(ruleRowsState);
   isDirty = false;
 }
 
 function renderLogs(runtime) {
   if (!runtime.recentRuns.length) {
-    logList.innerHTML = "<li class=\"empty-log\">暂无运行记录。</li>";
+    logList.innerHTML = `<li class="empty-log">${escapeHtml(t(locale, "options.logsEmpty"))}</li>`;
     return;
   }
 
   logList.innerHTML = runtime.recentRuns.map((entry) => `
     <li class="log-entry">
-      <strong>${escapeHtml(MODE_LABELS[entry.mode] || entry.mode)} · ${escapeHtml(RESULT_LABELS[entry.result] || entry.result)}</strong>
+      <strong>${escapeHtml(localizeMode(locale, entry.mode))} · ${escapeHtml(localizeResult(locale, entry.result))}</strong>
       <span>${escapeHtml(formatTime(entry.at))}</span>
-      <span>${escapeHtml(entry.message || "无补充信息")}</span>
+      <span>${escapeHtml(entry.message || "-")}</span>
     </li>
   `).join("");
 }
 
 function renderRuntime(snapshot) {
   const { runtime, alarm } = snapshot;
-  runtimeResult.textContent = RESULT_LABELS[runtime.lastResult] || runtime.lastResult;
+  runtimeResult.textContent = localizeResult(locale, runtime.lastResult);
   runtimeLastRun.textContent = formatTime(runtime.lastRunAt);
   runtimeLastSuccess.textContent = formatTime(runtime.lastSuccessAt);
   runtimeNextRun.textContent = formatScheduledTime(alarm);
   runtimeMessage.textContent = runtime.lastResult === "success"
-    ? "最近一次执行已成功点击刷新入口。"
-    : runtime.lastErrorMessage || "最近一次执行没有额外错误信息。";
+    ? t(locale, "options.runtimeHintSuccess")
+    : runtime.lastErrorMessage || t(locale, "options.runtimeHintIdle");
   renderLogs(runtime);
+}
+
+function renderNotebookPicker(notebooks) {
+  notebookCache = Array.isArray(notebooks) ? notebooks : [];
+  notebookSelectedUrls = new Set(
+    [...notebookSelectedUrls].filter((url) => notebookCache.some((item) => item.url === url))
+  );
+  drawNotebookPicker();
+}
+
+function selectedNotebookUrls() {
+  return [...notebookSelectedUrls];
+}
+
+function updateSelectionCount() {
+  pickerSelectionCount.textContent = t(locale, "options.pickerSelected", { count: notebookSelectedUrls.size });
+}
+
+function notebookMatchesSearch(item) {
+  if (!notebookSearchKeyword) return true;
+  const title = String(item.title || "").toLowerCase();
+  const url = String(item.url || "").toLowerCase();
+  return title.includes(notebookSearchKeyword) || url.includes(notebookSearchKeyword);
+}
+
+function drawNotebookPicker() {
+  notebookPicker.innerHTML = "";
+  const visible = notebookCache.filter((item) => notebookMatchesSearch(item));
+
+  if (!notebookCache.length) {
+    notebookPicker.innerHTML = `<div class="picker-empty">${escapeHtml(t(locale, "options.pickerEmpty"))}</div>`;
+    updateSelectionCount();
+    return;
+  }
+
+  if (!visible.length) {
+    notebookPicker.innerHTML = `<div class="picker-empty">${escapeHtml(t(locale, "options.pickerNoMatch"))}</div>`;
+    updateSelectionCount();
+    return;
+  }
+
+  visible.forEach((item) => {
+    const row = document.createElement("label");
+    row.className = "notebook-item";
+    row.innerHTML = `
+      <input type="checkbox" ${notebookSelectedUrls.has(item.url) ? "checked" : ""}>
+      <span class="notebook-main">
+        <strong class="notebook-title">${escapeHtml(item.title)}</strong>
+        <span class="notebook-url">${escapeHtml(item.url)}</span>
+      </span>
+    `;
+
+    const checkbox = row.querySelector("input[type='checkbox']");
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) notebookSelectedUrls.add(item.url);
+      else notebookSelectedUrls.delete(item.url);
+      updateSelectionCount();
+    });
+
+    notebookPicker.appendChild(row);
+  });
+
+  updateSelectionCount();
+}
+
+function collectRule() {
+  const rows = readRowsFromDom();
+  return normalizeRule({
+    enabled: enabledInput.checked,
+    intervalMinutes: intervalMinutesInput.value,
+    targetLines: serializeRowsToTargetLines(rows),
+    refreshLabel: refreshLabelInput.value
+  });
+}
+
+function appendSelectedNotebooksToRules() {
+  const selected = selectedNotebookUrls();
+  if (!selected.length) {
+    setStatus(t(locale, "options.statusNoSelection"));
+    return;
+  }
+
+  const existing = new Set(
+    readRowsFromDom().map((row) => `${normalizeNotebookUrl(row.notebookUrl, "")}|${row.sourceLabel}`)
+  );
+
+  let appended = 0;
+  selected.forEach((url) => {
+    const sourceLabel = getCachedTitleByUrl(url) || "work ai news";
+    const key = `${normalizeNotebookUrl(url, "")}|${sourceLabel}`;
+    if (existing.has(key)) return;
+    if (!ruleRows.querySelector("li.rule-row")) ruleRows.innerHTML = "";
+    addRow({ notebookUrl: url, sourceLabel });
+    existing.add(key);
+    appended += 1;
+  });
+
+  isDirty = true;
+  syncHiddenTargetLines();
+
+  setStatus(
+    appended
+      ? t(locale, "options.statusAddedRules", { count: appended })
+      : t(locale, "options.statusAlreadyExists")
+  );
+}
+
+function appendExtraSourceRowsForSelected() {
+  const selected = selectedNotebookUrls();
+  if (!selected.length) {
+    setStatus(t(locale, "options.statusNoSelection"));
+    return;
+  }
+
+  if (!ruleRows.querySelector("li.rule-row")) ruleRows.innerHTML = "";
+  selected.forEach((url) => addRow({ notebookUrl: url, sourceLabel: "" }));
+
+  isDirty = true;
+  syncHiddenTargetLines();
+  setStatus(t(locale, "options.statusAppendedSources", { count: selected.length }));
 }
 
 async function fetchState() {
   const response = await chrome.runtime.sendMessage({ type: "GET_STATE" });
-  if (!response?.ok) {
-    throw new Error(response?.error || "state_failed");
-  }
+  if (!response?.ok) throw new Error(response?.error || "state_failed");
   return response.snapshot;
 }
 
-async function refreshState(message = "就绪。") {
+async function refreshState(message = t(locale, "common.ready")) {
   const snapshot = await fetchState();
+  lastSnapshot = snapshot;
   renderRule(snapshot.rule);
   renderRuntime(snapshot);
   setStatus(message);
 }
 
-function collectRule() {
-  return normalizeRule({
-    enabled: enabledInput.checked,
-    intervalMinutes: intervalMinutesInput.value,
-    notebookUrls: notebookUrlsInput.value,
-    sourceLabel: sourceLabelInput.value,
-    refreshLabel: refreshLabelInput.value
-  });
-}
-
 async function invokeAction(button, message, progressText, doneText) {
   button.disabled = true;
   setStatus(progressText);
+
   try {
     const response = await chrome.runtime.sendMessage(message);
-    if (!response?.ok) {
-      throw new Error(response?.error || "action_failed");
-    }
+    if (!response?.ok) throw new Error(response?.error || "action_failed");
+    lastSnapshot = response.snapshot;
     renderRule(response.snapshot.rule);
     renderRuntime(response.snapshot);
     setStatus(doneText);
+    return response;
   } catch (error) {
-    setStatus(`执行失败：${error.message}`);
+    setStatus(t(locale, "common.actionFailed", { message: error.message }));
     throw error;
   } finally {
     const snapshot = await fetchState().catch(() => null);
     if (snapshot) {
+      lastSnapshot = snapshot;
       renderRule(snapshot.rule);
       renderRuntime(snapshot);
     }
@@ -141,25 +362,33 @@ async function invokeAction(button, message, progressText, doneText) {
   }
 }
 
+function refreshStaticText() {
+  applyI18n(locale);
+  document.title = t(locale, "options.pageTitle");
+  buildInfo.textContent = t(locale, "common.version", { version: chrome.runtime.getManifest().version });
+  updateSelectionCount();
+}
+
 saveRuleButton.addEventListener("click", () => {
   saveRuleButton.disabled = true;
-  setStatus("正在保存规则...");
+  setStatus(t(locale, "options.statusSaving"));
+
   chrome.runtime.sendMessage({ type: "SAVE_RULE", payload: collectRule() })
     .then((response) => {
-      if (!response?.ok) {
-        throw new Error(response?.error || "save_failed");
-      }
+      if (!response?.ok) throw new Error(response?.error || "save_failed");
       isDirty = false;
+      lastSnapshot = response.snapshot;
       renderRule(response.snapshot.rule, { force: true });
       renderRuntime(response.snapshot);
-      setStatus("规则已保存。");
+      setStatus(t(locale, "options.statusSaved"));
     })
     .catch((error) => {
-      setStatus(`执行失败：${error.message}`);
+      setStatus(t(locale, "common.actionFailed", { message: error.message }));
     })
     .finally(async () => {
       const snapshot = await fetchState().catch(() => null);
       if (snapshot) {
+        lastSnapshot = snapshot;
         renderRule(snapshot.rule);
         renderRuntime(snapshot);
       }
@@ -168,25 +397,95 @@ saveRuleButton.addEventListener("click", () => {
 });
 
 runNowButton.addEventListener("click", () => {
-  invokeAction(
-    runNowButton,
-    { type: "RUN_NOW" },
-    "正在执行手动刷新...",
-    "手动刷新已完成。"
-  ).catch(() => undefined);
+  invokeAction(runNowButton, { type: "RUN_NOW" }, t(locale, "popup.progressRunNow"), t(locale, "popup.doneRunNow"))
+    .catch(() => undefined);
 });
 
 openNotebookButton.addEventListener("click", () => {
   invokeAction(
     openNotebookButton,
     { type: "OPEN_NOTEBOOK" },
-    "正在打开专用 Notebook 标签页...",
-    "已打开专用 Notebook 标签页。"
+    t(locale, "popup.progressOpenNotebook"),
+    t(locale, "popup.doneOpenNotebook")
   ).catch(() => undefined);
 });
 
-chrome.storage.onChanged.addListener(() => {
-  refreshState("已同步最新状态。").catch(() => undefined);
+fetchNotebooksButton.addEventListener("click", async () => {
+  fetchNotebooksButton.disabled = true;
+  setStatus(t(locale, "options.statusFetchNotebooks"));
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "FETCH_NOTEBOOKS" });
+    if (!response?.ok) throw new Error(response?.error || "fetch_notebooks_failed");
+    renderNotebookPicker(response.notebooks || []);
+    lastSnapshot = response.snapshot;
+    renderRuntime(response.snapshot);
+    setStatus(t(locale, "options.statusFetchedNotebooks", { count: response.notebooks?.length || 0 }));
+  } catch (error) {
+    setStatus(t(locale, "common.actionFailed", { message: error.message }));
+  } finally {
+    fetchNotebooksButton.disabled = false;
+  }
+});
+
+appendNotebooksButton.addEventListener("click", appendSelectedNotebooksToRules);
+appendSourcesForSelectedButton.addEventListener("click", appendExtraSourceRowsForSelected);
+
+selectAllVisibleButton.addEventListener("click", () => {
+  const visible = notebookCache.filter((item) => notebookMatchesSearch(item));
+  visible.forEach((item) => notebookSelectedUrls.add(item.url));
+  drawNotebookPicker();
+});
+
+clearSelectionButton.addEventListener("click", () => {
+  notebookSelectedUrls.clear();
+  drawNotebookPicker();
+});
+
+notebookSearchInput.addEventListener("input", () => {
+  notebookSearchKeyword = String(notebookSearchInput.value || "").trim().toLowerCase();
+  drawNotebookPicker();
+});
+
+addRuleRowButton.addEventListener("click", () => {
+  if (!ruleRows.querySelector("li.rule-row")) ruleRows.innerHTML = "";
+  addRow({ notebookUrl: "", sourceLabel: "" });
+  isDirty = true;
+  syncHiddenTargetLines();
+});
+
+localeSelect.addEventListener("change", async () => {
+  locale = await setLocale(localeSelect.value);
+  fillLocaleSelect(localeSelect, locale);
+  refreshStaticText();
+
+  const rows = readRowsFromDom();
+  renderRows(rows);
+  drawNotebookPicker();
+
+  if (lastSnapshot) {
+    renderRuntime(lastSnapshot);
+  }
+
+  setStatus(t(locale, "common.ready"));
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+
+  if (changes.uiLocale) {
+    locale = changes.uiLocale.newValue;
+    fillLocaleSelect(localeSelect, locale);
+    refreshStaticText();
+
+    const rows = readRowsFromDom();
+    renderRows(rows);
+    drawNotebookPicker();
+    if (lastSnapshot) renderRuntime(lastSnapshot);
+    return;
+  }
+
+  refreshState(t(locale, "options.statusRefreshingState")).catch(() => undefined);
 });
 
 formInputs.forEach((input) => {
@@ -198,9 +497,20 @@ formInputs.forEach((input) => {
   });
 });
 
-buildInfo.textContent = `版本 ${chrome.runtime.getManifest().version}`;
+async function bootstrap() {
+  locale = await getLocale();
+  fillLocaleSelect(localeSelect, locale);
+  refreshStaticText();
 
-refreshState().catch((error) => {
-  console.error("[NotebookLM Refresh] failed to load options", error);
-  setStatus(`加载失败：${error.message}`);
-});
+  renderNotebookPicker([]);
+  renderRows([]);
+  setStatus(t(locale, "common.ready"));
+
+  try {
+    await refreshState(t(locale, "common.ready"));
+  } catch (error) {
+    setStatus(t(locale, "common.loadFailed", { message: error.message }));
+  }
+}
+
+bootstrap();

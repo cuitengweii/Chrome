@@ -3,99 +3,123 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NotebookLM 来源刷新器设置</title>
+  <title>空来Ai-NotebookLM辅助器设置</title>
   <link rel="stylesheet" href="options.css">
 </head>
 <body>
   <main class="page-shell">
     <section class="hero">
       <div>
-        <p class="eyebrow">NotebookLM</p>
-        <h1>来源刷新器设置</h1>
-        <p class="hero-copy">管理多条 NotebookLM URL 自动刷新规则（共享来源与刷新文案）、最近运行状态，以及首次登录后的专用后台标签页。</p>
+        <p class="eyebrow" data-i18n="common.appName"></p>
+        <h1 data-i18n="options.heroTitle"></h1>
+        <p class="hero-copy" data-i18n="options.heroDesc"></p>
       </div>
       <div class="hero-actions">
-        <button id="saveRule" class="primary-button" type="button">保存规则</button>
-        <button id="runNow" class="secondary-button" type="button">立即运行</button>
-        <button id="openNotebook" class="secondary-button" type="button">打开 Notebook</button>
+        <label class="locale-inline">
+          <span data-i18n="options.locale"></span>
+          <select id="localeSelect" aria-label="Language"></select>
+        </label>
+        <button id="saveRule" class="primary-button" type="button" data-i18n="options.saveRule"></button>
+        <button id="runNow" class="secondary-button" type="button" data-i18n="options.runNow"></button>
+        <button id="openNotebook" class="secondary-button" type="button" data-i18n="options.openNotebook"></button>
       </div>
     </section>
 
     <section class="layout-grid">
       <article class="panel">
-        <h2>规则配置</h2>
+        <h2 data-i18n="options.sectionRule"></h2>
         <div class="field-grid">
           <label class="toggle-row full-width">
             <input id="enabled" type="checkbox">
-            <span>启用定时刷新</span>
+            <span data-i18n="options.enabled"></span>
           </label>
 
           <label>
-            运行间隔（分钟）
+            <span data-i18n="options.intervalMinutes"></span>
             <input id="intervalMinutes" type="number" min="5" max="1440" step="1">
           </label>
 
-          <label class="full-width">
-            Notebook URLs（每行一个）
-            <textarea id="notebookUrls" rows="5" spellcheck="false"></textarea>
-          </label>
+          <div class="full-width">
+            <div class="rule-header">
+              <span data-i18n="options.ruleGroupTitle"></span>
+              <button id="addRuleRow" class="secondary-button" type="button" data-i18n="options.addRuleRow"></button>
+            </div>
+            <ul id="ruleRows" class="rule-rows">
+              <li class="empty-log" data-i18n="options.rowEmpty"></li>
+            </ul>
+            <textarea id="targetLines" class="hidden-field" rows="2" spellcheck="false"></textarea>
+          </div>
 
           <label>
-            来源名称
-            <input id="sourceLabel" type="text">
-          </label>
-
-          <label>
-            刷新文案
+            <span data-i18n="options.refreshLabel"></span>
             <input id="refreshLabel" type="text">
           </label>
+
+          <div class="full-width import-row">
+            <div class="import-actions">
+              <button id="fetchNotebooks" class="secondary-button" type="button" data-i18n="options.fetchNotebooks"></button>
+              <button id="appendNotebooks" class="secondary-button" type="button" data-i18n="options.appendSelectedRules"></button>
+              <button id="appendSourcesForSelected" class="secondary-button" type="button" data-i18n="options.appendSelectedSource"></button>
+            </div>
+            <div class="picker-head">
+              <label for="notebookSearch" data-i18n="options.notebookPickerTitle"></label>
+              <span id="pickerSelectionCount" class="picker-count"></span>
+            </div>
+            <div class="picker-toolbar">
+              <input id="notebookSearch" type="text" data-i18n-placeholder="options.notebookSearchPlaceholder">
+              <button id="selectAllVisible" class="secondary-button" type="button" data-i18n="options.selectAllVisible"></button>
+              <button id="clearSelection" class="secondary-button" type="button" data-i18n="options.clearSelection"></button>
+            </div>
+            <div id="notebookPicker" class="notebook-picker" role="listbox" aria-multiselectable="true"></div>
+            <p class="helper-copy" data-i18n="options.pickerHint"></p>
+          </div>
         </div>
       </article>
 
       <article class="panel">
-        <h2>最近状态</h2>
+        <h2 data-i18n="options.sectionRuntime"></h2>
         <div class="meta-grid">
           <div>
-            <span class="meta-label">当前状态</span>
-            <strong id="runtimeResult">加载中</strong>
+            <span class="meta-label" data-i18n="options.currentState"></span>
+            <strong id="runtimeResult"></strong>
           </div>
           <div>
-            <span class="meta-label">上次运行</span>
-            <strong id="runtimeLastRun">加载中</strong>
+            <span class="meta-label" data-i18n="options.lastRun"></span>
+            <strong id="runtimeLastRun"></strong>
           </div>
           <div>
-            <span class="meta-label">上次成功</span>
-            <strong id="runtimeLastSuccess">加载中</strong>
+            <span class="meta-label" data-i18n="options.lastSuccess"></span>
+            <strong id="runtimeLastSuccess"></strong>
           </div>
           <div>
-            <span class="meta-label">下一次计划</span>
-            <strong id="runtimeNextRun">加载中</strong>
+            <span class="meta-label" data-i18n="options.nextRun"></span>
+            <strong id="runtimeNextRun"></strong>
           </div>
         </div>
-        <p id="runtimeMessage" class="helper-copy">正在读取最近执行信息。</p>
+        <p id="runtimeMessage" class="helper-copy"></p>
       </article>
 
       <article class="panel wide-panel">
-        <h2>运行日志</h2>
+        <h2 data-i18n="options.sectionLogs"></h2>
         <ul id="logList" class="log-list">
-          <li class="empty-log">暂无运行记录。</li>
+          <li class="empty-log" data-i18n="options.logsEmpty"></li>
         </ul>
       </article>
 
       <article class="panel wide-panel">
-        <h2>首次使用说明</h2>
+        <h2 data-i18n="options.sectionGuide"></h2>
         <ol class="usage-list">
-          <li>确认规则中的 Notebook URLs、来源名称和刷新文案正确。</li>
-          <li>点击“打开 Notebook”，在打开的专用标签页中手动登录 Google 账号。</li>
-          <li>登录后停留在目标 notebook 页面，回到设置页点击“立即运行”完成首次验证。</li>
-          <li>之后浏览器保持运行时，扩展会按配置的间隔自动执行刷新。</li>
+          <li data-i18n="options.guide1"></li>
+          <li data-i18n="options.guide2"></li>
+          <li data-i18n="options.guide3"></li>
+          <li data-i18n="options.guide4"></li>
         </ol>
       </article>
     </section>
 
     <section class="status-bar">
-      <span id="formStatus">就绪。</span>
-      <span id="buildInfo" class="build-info">版本加载中</span>
+      <span id="formStatus"></span>
+      <span id="buildInfo" class="build-info"></span>
     </section>
   </main>
   <script type="module" src="options.js"></script>

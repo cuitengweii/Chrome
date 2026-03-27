@@ -1,6 +1,6 @@
 ﻿{
   "manifest_version": 3,
-  "name": "NotebookLM 来源刷新器",
+  "name": "空来Ai-NotebookLM辅助器",
   "description": "定时进入指定 NotebookLM 笔记本并刷新指定来源。",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
@@ -9,7 +9,9 @@
     "alarms",
     "tabs",
     "scripting",
-    "notifications"
+    "notifications",
+    "downloads",
+    "bookmarks"
   ],
   "host_permissions": [
     "https://notebooklm.google.com/*"
@@ -19,7 +21,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "NotebookLM 来源刷新器",
+    "default_title": "空来Ai-NotebookLM辅助器",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",

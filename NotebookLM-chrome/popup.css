@@ -1,20 +1,19 @@
 ﻿:root {
-  color-scheme: light;
-  --bg: radial-gradient(circle at top left, #f7efe2 0%, #f4f8ff 45%, #eef8f1 100%);
-  --card: rgba(255, 255, 255, 0.88);
-  --line: rgba(38, 54, 74, 0.14);
-  --ink: #223043;
-  --muted: #5b6779;
-  --accent: #0a7c66;
-  --accent-soft: rgba(10, 124, 102, 0.12);
-  --warn: #b86a16;
-  --warn-soft: rgba(184, 106, 22, 0.14);
-  --idle-soft: rgba(74, 111, 165, 0.12);
+  color-scheme: dark;
+  --bg: radial-gradient(circle at 18% -10%, #1b2d10 0%, #0f150c 42%, #090d08 100%);
+  --card: rgba(19, 24, 16, 0.92);
+  --line: rgba(93, 214, 44, 0.24);
+  --ink: #ebf6e5;
+  --muted: #9fb399;
+  --accent: #5dd62c;
+  --accent-strong: #74ef3f;
+  --accent-soft: rgba(93, 214, 44, 0.16);
+  --warn: #f4c144;
+  --warn-soft: rgba(244, 193, 68, 0.18);
+  --idle-soft: rgba(93, 214, 44, 0.08);
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -37,7 +36,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 20px;
   background: var(--card);
-  box-shadow: 0 20px 44px rgba(19, 32, 47, 0.08);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.34);
 }
 
 .hero-card {
@@ -46,6 +45,23 @@ body {
   align-items: flex-start;
   gap: 12px;
   padding: 18px;
+}
+
+.hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.locale-wrap select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
 }
 
 .eyebrow,
@@ -60,12 +76,13 @@ body {
 
 .hero-card h1 {
   margin: 0;
-  font-size: 27px;
-  line-height: 1.04;
+  font-size: 42px;
+  line-height: 0.98;
+  letter-spacing: 0.01em;
 }
 
 .hero-summary {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
   line-height: 1.45;
 }
@@ -76,8 +93,9 @@ body {
   padding: 9px 12px;
   font-size: 12px;
   font-weight: 700;
-  color: var(--accent);
-  background: rgba(10, 124, 102, 0.1);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
 }
 
 .status-grid,
@@ -86,21 +104,10 @@ body {
   gap: 12px;
 }
 
-.status-card {
-  padding: 14px;
-}
-
-.status-card[data-tone="good"] {
-  background: linear-gradient(140deg, var(--accent-soft), rgba(255, 255, 255, 0.94));
-}
-
-.status-card[data-tone="warn"] {
-  background: linear-gradient(140deg, var(--warn-soft), rgba(255, 255, 255, 0.94));
-}
-
-.status-card[data-tone="muted"] {
-  background: linear-gradient(140deg, var(--idle-soft), rgba(255, 255, 255, 0.94));
-}
+.status-card { padding: 14px; }
+.status-card[data-tone="good"] { background: linear-gradient(140deg, rgba(38, 60, 30, 0.86), rgba(19, 24, 16, 0.96)); }
+.status-card[data-tone="warn"] { background: linear-gradient(140deg, var(--warn-soft), rgba(19, 24, 16, 0.96)); }
+.status-card[data-tone="muted"] { background: linear-gradient(140deg, var(--idle-soft), rgba(19, 24, 16, 0.96)); }
 
 .status-card strong {
   display: block;
@@ -114,9 +121,7 @@ body {
   line-height: 1.45;
 }
 
-.action-grid {
-  grid-template-columns: 1fr 1fr;
-}
+.action-grid { grid-template-columns: 1fr 1fr; }
 
 button {
   appearance: none;
@@ -129,37 +134,28 @@ button {
   transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
 }
 
-button:hover {
-  transform: translateY(-1px);
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.65;
-  transform: none;
-}
+button:hover { transform: translateY(-1px); }
+button:disabled { cursor: not-allowed; opacity: 0.65; transform: none; }
 
 .primary-button {
-  background: linear-gradient(135deg, #0a7c66, #12836d);
-  color: #fff;
+  background: linear-gradient(135deg, #4bc021, #5dd62c 52%, #74ef3f);
+  color: #081006;
 }
 
 .secondary-button {
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--ink);
 }
 
 .ghost-button {
   grid-column: 1 / -1;
-  border: 1px dashed rgba(38, 54, 74, 0.24);
-  background: rgba(255, 255, 255, 0.52);
+  border: 1px dashed var(--line);
+  background: rgba(255, 255, 255, 0.02);
   color: var(--muted);
 }
 
-.log-card {
-  padding: 14px;
-}
+.log-card { padding: 14px; }
 
 .log-header {
   display: flex;
@@ -186,13 +182,11 @@ button:disabled {
   gap: 4px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(244, 248, 255, 0.85);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(93, 214, 44, 0.16);
 }
 
-.log-entry strong {
-  font-size: 14px;
-}
-
+.log-entry strong { font-size: 14px; }
 .log-entry span,
 .empty-log {
   color: var(--muted);

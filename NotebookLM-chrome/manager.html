@@ -1,0 +1,584 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>空来Ai-NotebookLM辅助器 | 管理台</title>
+  <link rel="stylesheet" href="manager.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">N</div>
+        <div>
+          <p class="brand-caption" data-i18n="manager.brandCaption"></p>
+          <h1 data-i18n="common.appName"></h1>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" type="button" data-view="notebooks" data-i18n="manager.navNotebooks"></button>
+        <button class="nav-item" type="button" data-view="allSources" data-i18n="manager.navAllSources"></button>
+        <button class="nav-item" type="button" data-view="documents" data-i18n="manager.navDocuments"></button>
+        <button class="nav-item" type="button" data-view="merge" data-i18n="manager.navMerge"></button>
+        <button class="nav-item" type="button" data-view="bulk" data-i18n="manager.navBulkImport"></button>
+        <button class="nav-item" type="button" data-view="podcast" data-i18n="manager.navPodcast"></button>
+        <button class="nav-item" type="button" data-view="automation" data-i18n="manager.navAutomation"></button>
+        <button class="nav-item" type="button" data-view="favorites" data-i18n="manager.navFavorites"></button>
+        <button class="nav-item" type="button" data-view="collections" data-i18n="manager.navCollections"></button>
+        <button class="nav-item" type="button" data-view="templates" data-i18n="manager.navTemplates"></button>
+        <button class="nav-item" type="button" data-view="stats" data-i18n="manager.navStats"></button>
+      </nav>
+
+      <div class="side-actions">
+        <button id="refreshNotebooks" class="primary" type="button" data-i18n="manager.refreshList"></button>
+        <button id="openOptions" class="secondary" type="button" data-i18n="manager.openSettings"></button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <input id="searchInput" type="text" data-i18n-placeholder="manager.searchPlaceholder">
+        <div class="top-actions">
+          <button id="themeToggle" class="secondary icon-btn" type="button" data-i18n-title="manager.themeToggleTitle" aria-label="Toggle theme">◐</button>
+          <button id="selectAllVisible" class="secondary" type="button" data-i18n="manager.selectAllVisible"></button>
+          <button id="clearSelection" class="secondary" type="button" data-i18n="manager.clearSelection"></button>
+          <span id="selectionCount" class="pill"></span>
+          <label class="locale-wrap">
+            <select id="localeSelect" aria-label="Language"></select>
+          </label>
+        </div>
+      </header>
+
+      <section class="view active" data-view="notebooks">
+        <article class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="manager.tableTitle"></h2>
+            <div class="batch-actions">
+              <button id="batchAddRule" class="secondary" type="button" data-i18n="manager.batchAddRule"></button>
+              <button id="batchAddSource" class="secondary" type="button" data-i18n="manager.batchAddSource"></button>
+              <button id="batchRunNow" class="secondary" type="button" data-i18n="manager.batchRunNow"></button>
+              <button id="batchCreateCollection" class="secondary" type="button" data-i18n="manager.batchCreateCollection"></button>
+            </div>
+          </div>
+
+          <div class="table-controls">
+            <label>
+              <span data-i18n="manager.tagFilter"></span>
+              <input id="tagFilterInput" type="text" data-i18n-placeholder="manager.tagFilterPlaceholder">
+            </label>
+            <label>
+              <span data-i18n="manager.sortBy"></span>
+              <select id="sortField">
+                <option value="title" data-i18n="manager.sortTitle"></option>
+                <option value="sources" data-i18n="manager.sortSources"></option>
+                <option value="rules" data-i18n="manager.sortRules"></option>
+              </select>
+            </label>
+            <button id="sortDirection" class="secondary" type="button"></button>
+            <label>
+              <span data-i18n="manager.pageSize"></span>
+              <select id="pageSize">
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="column-controls" id="columnConfig">
+            <label><input id="colSources" type="checkbox" checked> <span data-i18n="manager.tableColSources"></span></label>
+            <label><input id="colTags" type="checkbox" checked> <span data-i18n="manager.tableColTags"></span></label>
+            <label><input id="colCollections" type="checkbox" checked> <span data-i18n="manager.tableColCollections"></span></label>
+            <label><input id="colLastEdited" type="checkbox" checked> <span data-i18n="manager.tableColLastEdited"></span></label>
+            <label><input id="colAudio" type="checkbox" checked> <span data-i18n="manager.tableColAudio"></span></label>
+            <label><input id="colRules" type="checkbox" checked> <span data-i18n="manager.tableColRules"></span></label>
+            <label><input id="colOps" type="checkbox" checked> <span data-i18n="manager.tableColOps"></span></label>
+          </div>
+
+          <div class="table-wrap">
+            <table class="notebooks-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th data-i18n="manager.tableColTitle"></th>
+                  <th data-col="sources" data-i18n="manager.tableColSources"></th>
+                  <th data-col="tags" data-i18n="manager.tableColTags"></th>
+                  <th data-col="collections" data-i18n="manager.tableColCollections"></th>
+                  <th data-col="lastEdited" data-i18n="manager.tableColLastEdited"></th>
+                  <th data-col="audio" data-i18n="manager.tableColAudio"></th>
+                  <th data-col="rules" data-i18n="manager.tableColRules"></th>
+                  <th data-col="ops" data-i18n="manager.tableColOps"></th>
+                </tr>
+              </thead>
+              <tbody id="tableBody">
+                <tr><td colspan="9" class="empty" data-i18n="manager.tableEmptyLoading"></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="pagination">
+            <button id="pagePrev" class="secondary" type="button" data-i18n="manager.pagePrev"></button>
+            <span id="pageInfo" class="helper"></span>
+            <button id="pageNext" class="secondary" type="button" data-i18n="manager.pageNext"></button>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" data-view="sourceDetail">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="sourceDetailTitle">Source Detail</h2>
+              <p id="sourceDetailHint" class="helper">-</p>
+            </div>
+            <div class="batch-actions">
+              <button id="sourceDetailBack" class="secondary" type="button" data-i18n="manager.backToNotebooks"></button>
+              <button id="sourceDetailRefresh" class="secondary" type="button" data-i18n="manager.refreshSourceList"></button>
+              <button id="sourceDetailDownloadAll" class="primary" type="button" data-i18n="manager.downloadSources"></button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="source-detail-table">
+              <thead>
+                <tr>
+                  <th data-i18n="manager.sourceColName"></th>
+                  <th data-i18n="manager.sourceColUrl"></th>
+                  <th data-i18n="manager.sourceColStatus"></th>
+                  <th data-i18n="manager.sourceColUpdated"></th>
+                  <th data-i18n="manager.tableColOps"></th>
+                </tr>
+              </thead>
+              <tbody id="sourceDetailBody">
+                <tr><td colspan="5" class="empty" data-i18n="manager.tableEmptyLoading"></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" data-view="allSources">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 data-i18n="manager.allSourcesTitle"></h2>
+              <p class="helper" data-i18n="manager.allSourcesDesc"></p>
+            </div>
+            <div class="batch-actions">
+              <button id="refreshAllSources" class="secondary" type="button" data-i18n="manager.refreshSourceList"></button>
+            </div>
+          </div>
+
+          <div id="allSourcesFolderGrid" class="folder-card-grid"></div>
+
+          <div class="all-sources-toolbar">
+            <div class="all-sources-toolbar-actions">
+              <button id="allSourcesSyncGdocs" class="secondary" type="button" data-i18n="manager.allSourcesSyncGdocs"></button>
+              <button id="allSourcesDownload" class="secondary" type="button" data-i18n="manager.downloadSources"></button>
+              <button id="allSourcesCreateNotebook" class="secondary" type="button" data-i18n="manager.allSourcesCreateNotebook"></button>
+              <button id="allSourcesAddToNotebook" class="secondary" type="button" data-i18n="manager.allSourcesAddToNotebook"></button>
+              <button id="allSourcesMoveFolder" class="secondary" type="button" data-i18n="manager.allSourcesMoveFolder"></button>
+              <button id="allSourcesDelete" class="secondary" type="button" data-i18n="manager.allSourcesDelete"></button>
+              <button id="allSourcesDeleteBad" class="secondary" type="button" data-i18n="manager.allSourcesDeleteBad"></button>
+            </div>
+            <label>
+              <span data-i18n="manager.allSourcesSearch"></span>
+              <input id="allSourcesSearchInput" type="text" data-i18n-placeholder="manager.searchPlaceholder">
+            </label>
+          </div>
+
+          <div class="table-wrap">
+            <table class="all-sources-table">
+              <thead>
+                <tr>
+                  <th><input id="allSourcesSelectAll" type="checkbox" aria-label="Select all"></th>
+                  <th data-i18n="manager.sourceColNotebook"></th>
+                  <th data-i18n="manager.sourceColName"></th>
+                  <th data-i18n="manager.sourceColUrl"></th>
+                  <th data-i18n="manager.tableColTags"></th>
+                  <th data-i18n="manager.tableColCollections"></th>
+                  <th data-i18n="manager.sourceColStatus"></th>
+                  <th data-i18n="manager.sourceColUpdated"></th>
+                  <th data-i18n="manager.tableColOps"></th>
+                </tr>
+              </thead>
+              <tbody id="allSourcesBody">
+                <tr><td colspan="9" class="empty" data-i18n="manager.tableEmptyLoading"></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="all-sources-pagination">
+            <span id="allSourcesSelectedCount" class="helper"></span>
+            <div class="pagination">
+              <label>
+                <span data-i18n="manager.pageSize"></span>
+                <select id="allSourcesRowsPerPage">
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                </select>
+              </label>
+              <span id="allSourcesPageInfo" class="helper"></span>
+              <button id="allSourcesPrevPage" class="secondary" type="button" data-i18n="manager.pagePrev"></button>
+              <button id="allSourcesNextPage" class="secondary" type="button" data-i18n="manager.pageNext"></button>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" data-view="documents">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 data-i18n="manager.documentsTitle"></h2>
+              <p class="helper" data-i18n="manager.documentsDesc"></p>
+            </div>
+            <div class="batch-actions">
+              <button id="refreshDocuments" class="secondary" type="button" data-i18n="manager.refreshDocuments"></button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="documents-table">
+              <thead>
+                <tr>
+                  <th data-i18n="manager.docColNotebook"></th>
+                  <th data-i18n="manager.docColTitle"></th>
+                  <th data-i18n="manager.docColType"></th>
+                  <th data-i18n="manager.docColUpdated"></th>
+                  <th data-i18n="manager.tableColOps"></th>
+                </tr>
+              </thead>
+              <tbody id="documentsBody">
+                <tr><td colspan="5" class="empty" data-i18n="manager.tableEmptyLoading"></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" data-view="merge">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 data-i18n="manager.mergeTitle"></h2>
+              <p class="helper" data-i18n="manager.mergeDesc"></p>
+            </div>
+          </div>
+          <div class="import-grid">
+            <label>
+              <span data-i18n="manager.mergeNewTitle"></span>
+              <input id="mergeTitleInput" type="text" data-i18n-placeholder="manager.mergeNewTitlePlaceholder">
+            </label>
+            <label class="checkbox-inline">
+              <input id="mergeDeleteOriginal" type="checkbox">
+              <span data-i18n="manager.mergeDeleteOriginal"></span>
+            </label>
+          </div>
+          <div class="batch-actions">
+            <button id="mergeSelectedNow" class="primary" type="button" data-i18n="manager.mergeNow"></button>
+          </div>
+          <div class="table-wrap">
+            <table class="merge-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th data-i18n="manager.tableColTitle"></th>
+                  <th data-i18n="manager.tableColSources"></th>
+                </tr>
+              </thead>
+              <tbody id="mergeBody">
+                <tr><td colspan="3" class="empty" data-i18n="manager.tableEmptyLoading"></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="view" data-view="favorites">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 data-i18n="manager.favoritesTitle"></h2>
+              <p class="helper" data-i18n="manager.favoritesDesc"></p>
+            </div>
+            <div class="batch-actions">
+              <button id="addSelectedFavorites" class="secondary" type="button" data-i18n="manager.addSelectedFavorites"></button>
+              <button id="removeSelectedFavorites" class="secondary" type="button" data-i18n="manager.removeSelectedFavorites"></button>
+            </div>
+          </div>
+          <ul id="favoritesList" class="feed-list">
+            <li class="empty" data-i18n="manager.favoritesEmpty"></li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="view" data-view="collections">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 data-i18n="manager.collectionsTitle"></h2>
+              <p class="helper" data-i18n="manager.collectionsDesc"></p>
+            </div>
+          </div>
+          <div class="inline-form">
+            <input id="collectionName" type="text" data-i18n-placeholder="manager.collectionNamePlaceholder">
+            <button id="createCollectionFromSelected" class="primary" type="button" data-i18n="manager.createCollectionFromSelected"></button>
+          </div>
+          <ul id="collectionsList" class="feed-list">
+            <li class="empty" data-i18n="manager.collectionsEmpty"></li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="view" data-view="templates">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 data-i18n="manager.templatesTitle"></h2>
+              <p class="helper" data-i18n="manager.templatesDesc"></p>
+            </div>
+          </div>
+          <div class="template-form">
+            <label>
+              <span data-i18n="manager.templateName"></span>
+              <input id="templateName" type="text" data-i18n-placeholder="manager.templateNamePlaceholder">
+            </label>
+            <label>
+              <span data-i18n="manager.templateSources"></span>
+              <textarea id="templateSources" rows="5" data-i18n-placeholder="manager.templateSourcesPlaceholder"></textarea>
+            </label>
+            <label>
+              <span data-i18n="manager.templateRefreshLabel"></span>
+              <input id="templateRefreshLabel" type="text">
+            </label>
+            <div class="template-actions">
+              <button id="saveTemplate" class="primary" type="button" data-i18n="manager.saveTemplate"></button>
+              <button id="cancelTemplateEdit" class="secondary" type="button" data-i18n="manager.cancelTemplateEdit"></button>
+            </div>
+          </div>
+          <ul id="templatesList" class="feed-list">
+            <li class="empty" data-i18n="manager.templatesEmpty"></li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="view" data-view="stats">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 data-i18n="manager.statsTitle"></h2>
+              <p class="helper" data-i18n="manager.statsDesc"></p>
+            </div>
+          </div>
+          <div id="statsGrid" class="runtime-grid"></div>
+        </article>
+      </section>
+
+      <section class="view" data-view="bulk">
+        <article class="panel">
+          <h2 data-i18n="manager.bulkTitle"></h2>
+          <div class="import-grid">
+            <label>
+              <span data-i18n="manager.targetNotebook"></span>
+              <select id="targetNotebook"></select>
+            </label>
+          </div>
+
+          <div class="method-tabs" id="bulkMethodTabs">
+            <button class="method-tab active" type="button" data-method="links" data-i18n="manager.importMethodLinks"></button>
+            <button class="method-tab" type="button" data-method="tabs" data-i18n="manager.importMethodTabs"></button>
+            <button class="method-tab" type="button" data-method="rss" data-i18n="manager.importMethodRss"></button>
+            <button class="method-tab" type="button" data-method="csv" data-i18n="manager.importMethodCsv"></button>
+            <button class="method-tab" type="button" data-method="crawler" data-i18n="manager.importMethodCrawler"></button>
+          </div>
+
+          <div class="method-panel active" data-method-panel="links">
+            <div class="import-grid">
+              <label>
+                <span data-i18n="manager.pageLinksUrl"></span>
+                <input id="pageUrlInput" type="url" placeholder="https://example.com/article-list">
+              </label>
+              <label>
+                <span data-i18n="manager.ytPlaylist"></span>
+                <input id="youtubeUrlInput" type="url" placeholder="https://www.youtube.com/playlist?list=...">
+              </label>
+            </div>
+            <div class="import-actions">
+              <button id="loadFromPageLinks" class="secondary" type="button" data-i18n="manager.loadFromPage"></button>
+              <button id="loadFromYoutube" class="secondary" type="button" data-i18n="manager.loadFromYt"></button>
+            </div>
+          </div>
+
+          <div class="method-panel" data-method-panel="tabs">
+            <div class="import-actions">
+              <button id="loadFromTabs" class="secondary" type="button" data-i18n="manager.loadFromTabs"></button>
+              <button id="loadFromBookmarks" class="secondary" type="button" data-i18n="manager.loadFromBookmarks"></button>
+            </div>
+          </div>
+
+          <div class="method-panel" data-method-panel="rss">
+            <div class="import-grid">
+              <label>
+                <span data-i18n="manager.rssUrl"></span>
+                <input id="rssUrlInput" type="url" placeholder="https://example.com/feed.xml">
+              </label>
+            </div>
+            <div class="import-actions">
+              <button id="loadFromRss" class="secondary" type="button" data-i18n="manager.loadFromRss"></button>
+            </div>
+          </div>
+
+          <div class="method-panel" data-method-panel="csv">
+            <div class="import-grid">
+              <label>
+                <span data-i18n="manager.csvFileLabel"></span>
+                <input id="csvFileInput" type="file" accept=".csv,text/csv">
+              </label>
+            </div>
+            <div class="import-actions">
+              <button id="loadFromCsv" class="secondary" type="button" data-i18n="manager.loadFromCsv"></button>
+            </div>
+          </div>
+
+          <div class="method-panel" data-method-panel="crawler">
+            <div class="pro-card">
+              <h3 data-i18n="manager.crawlerProTitle"></h3>
+              <p class="helper" data-i18n="manager.crawlerProDesc"></p>
+              <button id="crawlerUpgrade" class="primary" type="button" data-i18n="manager.crawlerUpgrade"></button>
+            </div>
+          </div>
+
+          <div class="import-actions">
+            <button id="clearImportUrls" class="secondary" type="button" data-i18n="manager.clearUrlList"></button>
+            <button id="batchImportToNotebook" class="primary" type="button" data-i18n="manager.importToNotebook"></button>
+          </div>
+
+          <label>
+            <span data-i18n="manager.importTextarea"></span>
+            <textarea id="importUrls" rows="10" spellcheck="false"></textarea>
+          </label>
+        </article>
+      </section>
+
+      <section class="view" data-view="podcast">
+        <article class="panel">
+          <h2 data-i18n="manager.podcastTitle"></h2>
+          <div class="podcast-grid">
+            <label>
+              <span data-i18n="manager.podcastNotebook"></span>
+              <select id="podcastNotebook"></select>
+            </label>
+            <label>
+              <span data-i18n="manager.podcastFeedTitle"></span>
+              <input id="podcastTitle" type="text" placeholder="My NotebookLM Podcast Feed">
+            </label>
+            <button id="syncPodcastFeed" class="primary" type="button" data-i18n="manager.podcastSyncButton"></button>
+          </div>
+          <ul id="podcastFeedList" class="feed-list">
+            <li class="empty" data-i18n="manager.podcastEmpty"></li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="view" data-view="automation">
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 data-i18n="manager.automationTitle"></h2>
+              <p class="helper" data-i18n="manager.automationDesc"></p>
+            </div>
+            <div class="automation-actions">
+              <button id="automationRunNow" class="primary" type="button" data-i18n="manager.runNow"></button>
+              <button id="automationOpenNotebook" class="secondary" type="button" data-i18n="options.openNotebook"></button>
+              <button id="automationToggleEnabled" class="secondary" type="button">-</button>
+            </div>
+          </div>
+
+          <div class="runtime-grid">
+            <article class="stat">
+              <span data-i18n="manager.automationState"></span>
+              <strong id="autoResult">-</strong>
+            </article>
+            <article class="stat">
+              <span data-i18n="manager.automationLastRun"></span>
+              <strong id="autoLastRun">-</strong>
+            </article>
+            <article class="stat">
+              <span data-i18n="manager.automationLastSuccess"></span>
+              <strong id="autoLastSuccess">-</strong>
+            </article>
+            <article class="stat">
+              <span data-i18n="manager.automationNextRun"></span>
+              <strong id="autoNextRun">-</strong>
+            </article>
+          </div>
+
+          <p id="autoMessage" class="helper">-</p>
+
+          <h3 data-i18n="manager.logsTitle"></h3>
+          <ul id="automationLogList" class="feed-list">
+            <li class="empty" data-i18n="manager.logsEmpty"></li>
+          </ul>
+        </article>
+      </section>
+
+      <footer class="status-bar">
+        <p id="status"></p>
+        <span id="buildInfo"></span>
+      </footer>
+    </main>
+  </div>
+
+  <div id="globalLoading" class="global-loading" aria-live="polite">
+    <div class="global-loading-card">
+      <div class="global-spinner" aria-hidden="true"></div>
+      <h3 id="globalLoadingTitle" data-i18n="manager.globalLoadingTitle"></h3>
+      <p id="globalLoadingHint" data-i18n="manager.globalLoadingHint"></p>
+    </div>
+  </div>
+
+  <dialog id="downloadDialog" class="download-dialog">
+    <form method="dialog">
+      <div class="dialog-head">
+        <h3 data-i18n="manager.downloadDialogTitle"></h3>
+        <button class="secondary" value="cancel" data-i18n="common.close">Close</button>
+      </div>
+      <input id="downloadFilterInput" type="text" data-i18n-placeholder="manager.downloadFilterPlaceholder">
+      <div class="download-format-row">
+        <label><input type="radio" name="downloadFormat" value="md" checked> Markdown (.md)</label>
+        <label><input type="radio" name="downloadFormat" value="txt"> Plain Text (.txt)</label>
+        <label><input type="radio" name="downloadFormat" value="pdf"> PDF (.pdf)</label>
+      </div>
+      <div id="downloadSourceList" class="download-source-list"></div>
+      <div class="dialog-actions">
+        <button id="downloadPreviewButton" type="button" class="secondary" data-i18n="manager.previewDownload"></button>
+        <button id="downloadSelectedButton" type="button" class="primary" data-i18n="manager.downloadSelected"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="appDialog" class="app-dialog">
+    <form method="dialog" class="app-dialog-form">
+      <div class="dialog-head">
+        <h3 id="appDialogTitle"></h3>
+        <button id="appDialogCloseTop" class="secondary" type="button" data-i18n="common.close"></button>
+      </div>
+      <p id="appDialogMessage" class="helper"></p>
+      <label id="appDialogInputWrap">
+        <span id="appDialogInputLabel"></span>
+        <input id="appDialogInput" type="text">
+      </label>
+      <pre id="appDialogPreview" class="app-dialog-preview"></pre>
+      <div class="dialog-actions">
+        <button id="appDialogCancel" type="button" class="secondary"></button>
+        <button id="appDialogConfirm" type="button" class="primary"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="manager.js"></script>
+</body>
+</html>

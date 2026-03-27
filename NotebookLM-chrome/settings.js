@@ -1,39 +1,43 @@
-export const RULES_KEY = "automationRules";
+﻿export const RULES_KEY = "automationRules";
 export const LEGACY_RULE_KEY = "automationRule";
 export const RUNTIME_KEY = "automationRuntime";
 export const ALARM_NAME = "notebooklm-source-refresh";
 export const MAX_LOG_ENTRIES = 40;
 
 export const RESULT_LABELS = Object.freeze({
-  idle: "空闲",
-  running: "执行中",
-  success: "已完成",
-  login_required: "需要登录或访问权限",
-  source_not_found: "未找到来源",
-  refresh_not_found: "未找到刷新入口",
-  page_error: "页面异常"
+  idle: "Idle",
+  running: "Running",
+  success: "Success",
+  login_required: "Login/Permission Required",
+  source_not_found: "Source Not Found",
+  refresh_not_found: "Refresh Entry Not Found",
+  page_error: "Page Error"
 });
 
 export const MODE_LABELS = Object.freeze({
-  manual: "手动",
-  scheduled: "定时",
-  system: "系统"
+  manual: "Manual",
+  scheduled: "Scheduled",
+  system: "System"
 });
 
 const VALID_RESULTS = new Set(Object.keys(RESULT_LABELS));
 const VALID_MODES = new Set(Object.keys(MODE_LABELS));
 const DEFAULT_NOTEBOOK_URL = "https://notebooklm.google.com/notebook/f7a160de-acd3-43eb-8c3d-bc6c6214b6a0";
+const DEFAULT_SOURCE_LABEL = "work ai news";
 
 export const DEFAULT_RULE = Object.freeze({
   enabled: true,
   intervalMinutes: 60,
-  notebookUrls: Object.freeze([DEFAULT_NOTEBOOK_URL]),
-  sourceLabel: "work ai news",
+  targets: Object.freeze([Object.freeze({
+    notebookUrl: DEFAULT_NOTEBOOK_URL,
+    sourceLabel: DEFAULT_SOURCE_LABEL
+  })]),
   refreshLabel: "点击即可与 Google 云端硬盘同步"
 });
 
 export const DEFAULT_RUNTIME = Object.freeze({
   dedicatedTabs: Object.freeze({}),
+  notebookIndexTabId: 0,
   lastRunAt: "",
   lastSuccessAt: "",
   lastResult: "idle",
@@ -59,9 +63,7 @@ export function normalizeNotebookUrl(value, fallback = "") {
   const candidate = trimText(value, fallback);
   try {
     const parsed = new URL(candidate);
-    if (parsed.protocol !== "https:" || parsed.hostname !== "notebooklm.google.com") {
-      return fallback;
-    }
+    if (parsed.protocol !== "https:" || parsed.hostname !== "notebooklm.google.com") return fallback;
     const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
     const search = parsed.search || "";
     return `${parsed.origin}${pathname}${search}`;
@@ -74,35 +76,62 @@ export function compareNotebookUrls(left, right) {
   return normalizeNotebookUrl(left, "") === normalizeNotebookUrl(right, "");
 }
 
-function unique(values) {
-  return [...new Set(values.filter(Boolean))];
+function parseTargetLine(line, defaultSourceLabel) {
+  const raw = trimText(line);
+  if (!raw) return null;
+  const parts = raw.split("|");
+  const notebookUrl = normalizeNotebookUrl(parts[0], "");
+  if (!notebookUrl) return null;
+  const sourceLabel = trimText(parts.slice(1).join("|"), defaultSourceLabel || DEFAULT_SOURCE_LABEL);
+  return { notebookUrl, sourceLabel };
 }
 
-export function parseNotebookUrls(value) {
-  const rawValues = Array.isArray(value)
+export function parseTargetLines(value, defaultSourceLabel = DEFAULT_SOURCE_LABEL) {
+  const lines = Array.isArray(value)
     ? value
-    : String(value ?? "")
-      .split(/\r?\n/)
-      .map((item) => item.trim())
-      .filter(Boolean);
+    : String(value ?? "").split(/\r?\n/);
 
-  return unique(rawValues.map((item) => normalizeNotebookUrl(item, "")).filter(Boolean));
+  const results = [];
+  for (const line of lines) {
+    const target = parseTargetLine(line, defaultSourceLabel);
+    if (!target) continue;
+    results.push(target);
+  }
+  return results;
+}
+
+function normalizeTargets(rawRule = {}) {
+  const legacyDefaultSource = trimText(rawRule.sourceLabel, DEFAULT_SOURCE_LABEL);
+
+  if (Array.isArray(rawRule.targets) && rawRule.targets.length) {
+    const targetLines = rawRule.targets.map((target) => `${target?.notebookUrl || ""}|${target?.sourceLabel || legacyDefaultSource}`);
+    const normalized = parseTargetLines(targetLines, legacyDefaultSource);
+    if (normalized.length) return normalized;
+  }
+
+  if (trimText(rawRule.targetLines)) {
+    const normalized = parseTargetLines(rawRule.targetLines, legacyDefaultSource);
+    if (normalized.length) return normalized;
+  }
+
+  if (Array.isArray(rawRule.notebookUrls) && rawRule.notebookUrls.length) {
+    const normalized = parseTargetLines(rawRule.notebookUrls.map((url) => `${url}|${legacyDefaultSource}`), legacyDefaultSource);
+    if (normalized.length) return normalized;
+  }
+
+  if (trimText(rawRule.notebookUrl)) {
+    const notebookUrl = normalizeNotebookUrl(rawRule.notebookUrl, DEFAULT_NOTEBOOK_URL);
+    return [{ notebookUrl, sourceLabel: legacyDefaultSource }];
+  }
+
+  return [{ ...DEFAULT_RULE.targets[0] }];
 }
 
 export function normalizeRule(rawRule = {}) {
-  const legacySingleUrl = normalizeNotebookUrl(rawRule.notebookUrl, "");
-  const notebookUrls = parseNotebookUrls(rawRule.notebookUrls ?? []);
-  const mergedUrls = notebookUrls.length
-    ? notebookUrls
-    : legacySingleUrl
-      ? [legacySingleUrl]
-      : [DEFAULT_RULE.notebookUrls[0]];
-
   return {
     enabled: rawRule.enabled !== false,
     intervalMinutes: clampInteger(rawRule.intervalMinutes, DEFAULT_RULE.intervalMinutes, 5, 1440),
-    notebookUrls: mergedUrls,
-    sourceLabel: trimText(rawRule.sourceLabel, DEFAULT_RULE.sourceLabel),
+    targets: normalizeTargets(rawRule),
     refreshLabel: trimText(rawRule.refreshLabel, DEFAULT_RULE.refreshLabel)
   };
 }
@@ -143,15 +172,14 @@ export function normalizeRuntime(rawRuntime = {}) {
     : [];
 
   const dedicatedTabs = normalizeTabMap(rawRuntime.dedicatedTabs || {});
-  const legacyDedicatedTabId = Number.isInteger(rawRuntime.dedicatedTabId)
-    ? rawRuntime.dedicatedTabId
-    : null;
-  if (legacyDedicatedTabId && !dedicatedTabs[DEFAULT_RULE.notebookUrls[0]]) {
-    dedicatedTabs[DEFAULT_RULE.notebookUrls[0]] = legacyDedicatedTabId;
+  const legacyDedicatedTabId = Number.isInteger(rawRuntime.dedicatedTabId) ? rawRuntime.dedicatedTabId : null;
+  if (legacyDedicatedTabId && !dedicatedTabs[DEFAULT_NOTEBOOK_URL]) {
+    dedicatedTabs[DEFAULT_NOTEBOOK_URL] = legacyDedicatedTabId;
   }
 
   return {
     dedicatedTabs,
+    notebookIndexTabId: Number.isInteger(rawRuntime.notebookIndexTabId) ? rawRuntime.notebookIndexTabId : 0,
     lastRunAt: trimText(rawRuntime.lastRunAt),
     lastSuccessAt: trimText(rawRuntime.lastSuccessAt),
     lastResult: VALID_RESULTS.has(rawRuntime.lastResult) ? rawRuntime.lastResult : DEFAULT_RUNTIME.lastResult,
