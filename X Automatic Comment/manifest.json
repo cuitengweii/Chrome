@@ -8,19 +8,19 @@
     "default_popup": "popup.html",
     "default_title": "X Automatic Comment",
     "default_icon": {
-      "16": "icon16.plasmo.6c567d50.png",
-      "32": "icon32.plasmo.76b92899.png",
-      "48": "icon48.plasmo.aced7582.png",
-      "64": "icon64.plasmo.8bb5e6e0.png",
-      "128": "icon128.plasmo.3c1ed2d2.png"
+      "16": "xac-logo-16.png",
+      "32": "xac-logo-32.png",
+      "48": "xac-logo-48.png",
+      "64": "xac-logo-64.png",
+      "128": "xac-logo-128.png"
     }
   },
   "icons": {
-    "16": "icon16.plasmo.6c567d50.png",
-    "32": "icon32.plasmo.76b92899.png",
-    "48": "icon48.plasmo.aced7582.png",
-    "64": "icon64.plasmo.8bb5e6e0.png",
-    "128": "icon128.plasmo.3c1ed2d2.png"
+    "16": "xac-logo-16.png",
+    "32": "xac-logo-32.png",
+    "48": "xac-logo-48.png",
+    "64": "xac-logo-64.png",
+    "128": "xac-logo-128.png"
   },
   "background": {
     "service_worker": "background-sw.js"
@@ -41,6 +41,8 @@
     "https://spark-api.xf-yun.com/*",
     "https://*.xf-yun.com/*",
     "https://accounts.google.com/*",
+    "https://*.gasgx.com/*",
+    "https://gasgx.com/*",
     "*://*.twitter.com/*",
     "*://*.x.com/*"
   ],
@@ -50,39 +52,20 @@
         "*://*.twitter.com/*",
         "*://*.x.com/*"
       ],
-      "css": [
-        "antd-popups.b1c55314.css"
-      ],
       "js": [
-        "xui.03f02ae4.js"
+        "xac-content.js"
       ],
-      "run_at": "document_start"
+      "run_at": "document_idle"
     },
     {
       "matches": [
-        "*://*.twitter.com/*",
-        "*://*.x.com/*"
-      ],
-      "css": [
-        "antd-popups.b1c55314.css"
+        "https://*.gasgx.com/*",
+        "https://gasgx.com/*"
       ],
       "js": [
-        "antd-popups.9ba8c9e3.js"
+        "xac-gasgx-sync.js"
       ],
-      "run_at": "document_start"
-    },
-    {
-      "matches": [
-        "*://*.twitter.com/*",
-        "*://*.x.com/*"
-      ],
-      "css": [
-        "antd-popups.b1c55314.css"
-      ],
-      "js": [
-        "new-agent.a71531cf.js"
-      ],
-      "run_at": "document_start"
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

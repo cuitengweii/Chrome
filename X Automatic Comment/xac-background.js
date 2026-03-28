@@ -33,6 +33,7 @@ const XAC_DEFAULT_SPARK_SETTINGS = Object.freeze({
   temperature: 0.3,
   max_tokens: 512
 })
+const XAC_REQUIRED_SPARK_FIELDS = Object.freeze(["url", "app_id", "api_key", "api_secret"])
 
 const XAC_DEFAULT_PROFILES = Object.freeze([
   {
@@ -177,12 +178,21 @@ function createPublicAuthConfig(authConfig) {
 }
 
 function createPublicSparkSettings(sparkSettings) {
+  const normalized = normalizeSparkSettings(sparkSettings, XAC_DEFAULT_SPARK_SETTINGS)
+  const missingRequiredFields = getMissingSparkFields(normalized)
   return {
-    ...sparkSettings,
-    api_key: maskSecret(sparkSettings.api_key),
-    api_secret: maskSecret(sparkSettings.api_secret),
-    app_id: maskSecret(sparkSettings.app_id)
+    ...normalized,
+    api_key: maskSecret(normalized.api_key),
+    api_secret: maskSecret(normalized.api_secret),
+    app_id: maskSecret(normalized.app_id),
+    missingRequiredFields,
+    isConfigured: missingRequiredFields.length === 0
   }
+}
+
+function getMissingSparkFields(sparkSettings) {
+  const normalized = normalizeSparkSettings(sparkSettings, XAC_DEFAULT_SPARK_SETTINGS)
+  return XAC_REQUIRED_SPARK_FIELDS.filter((field) => !toStringValue(normalized[field], ""))
 }
 
 async function readPackagedJson(relativePath) {
@@ -427,7 +437,57 @@ async function getGoogleSession() {
   if (!isPlainObject(session)) {
     return null
   }
-  return session
+  const normalized = normalizeGoogleSessionPayload(session)
+  if (!normalized) return null
+  return normalized
+}
+
+function normalizeGoogleSessionPayload(payload) {
+  if (!isPlainObject(payload)) return null
+
+  const accessToken = toStringValue(payload.accessToken ?? payload.access_token, "")
+  if (!accessToken) return null
+
+  const refreshToken = toStringValue(payload.refreshToken ?? payload.refresh_token, "")
+  const tokenType = toStringValue(payload.tokenType ?? payload.token_type, "bearer")
+  const expiresIn = Math.max(60, Math.round(toNumber(payload.expiresIn ?? payload.expires_in, 3600)))
+
+  let expiresAtRaw = toNumber(payload.expiresAt ?? payload.expires_at, 0)
+  if (expiresAtRaw > 0 && expiresAtRaw < 10000000000) {
+    expiresAtRaw = expiresAtRaw * 1000
+  }
+  const expiresAt = expiresAtRaw > 0 ? Math.round(expiresAtRaw) : Date.now() + expiresIn * 1000
+
+  return {
+    provider: "google",
+    accessToken,
+    refreshToken,
+    tokenType,
+    expiresIn,
+    expiresAt,
+    user: isPlainObject(payload.user) ? payload.user : null,
+    signedInAt: toStringValue(payload.signedInAt, new Date().toISOString())
+  }
+}
+
+async function upsertGoogleSession(payload, options = {}) {
+  const normalized = normalizeGoogleSessionPayload(payload)
+  if (!normalized) {
+    throw new Error("Invalid Google session payload.")
+  }
+
+  const authConfig = await getAuthConfig()
+  const shouldFetchUser = options.fetchUser !== false
+  if (shouldFetchUser && !normalized.user && authConfig.supabaseUrl && authConfig.supabaseKey) {
+    try {
+      normalized.user = await fetchSupabaseUser(authConfig, normalized.accessToken)
+    } catch (_error) {
+      // user profile fetch is best-effort for sync flow
+    }
+  }
+
+  await storageSet({ [XAC_STORAGE_KEYS.googleSession]: normalized })
+  return normalized
 }
 
 function parseAuthCallbackUrl(callbackUrl) {
@@ -454,6 +514,10 @@ function parseAuthCallbackUrl(callbackUrl) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function launchWebAuthFlow(url, interactive = true) {
   return new Promise((resolve, reject) => {
     chrome.identity.launchWebAuthFlow({ url, interactive }, (callbackUrl) => {
@@ -468,6 +532,93 @@ function launchWebAuthFlow(url, interactive = true) {
       resolve(callbackUrl)
     })
   })
+}
+
+function createPopupWindow(url) {
+  return new Promise((resolve, reject) => {
+    chrome.windows.create(
+      {
+        url,
+        type: "popup",
+        focused: true,
+        width: 460,
+        height: 760
+      },
+      (win) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message))
+          return
+        }
+        if (!win || typeof win.id !== "number") {
+          reject(new Error("Failed to open login popup window."))
+          return
+        }
+        resolve(win)
+      }
+    )
+  })
+}
+
+function getWindowById(windowId) {
+  return new Promise((resolve) => {
+    chrome.windows.get(windowId, {}, (win) => {
+      if (chrome.runtime.lastError || !win) {
+        resolve(null)
+        return
+      }
+      resolve(win)
+    })
+  })
+}
+
+function closeWindowById(windowId) {
+  return new Promise((resolve) => {
+    chrome.windows.remove(windowId, () => {
+      resolve(true)
+    })
+  })
+}
+
+async function waitForSyncedGoogleSession(windowId, timeoutMs = 180000) {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    const session = await getGoogleSession()
+    if (session?.accessToken) {
+      return session
+    }
+
+    const stillOpen = await getWindowById(windowId)
+    if (!stillOpen) {
+      break
+    }
+    await sleep(700)
+  }
+
+  return null
+}
+
+function buildGasGxSignInUrl(authConfig) {
+  const signInPath = toStringValue(authConfig.signInUrl, "/account/user.html")
+  const siteOrigin = "https://www.gasgx.com"
+  const target = new URL(signInPath, siteOrigin)
+  target.searchParams.set("source", "xac-extension")
+  target.searchParams.set("popup", "1")
+  return target.toString()
+}
+
+async function signInViaGasGxPopup(authConfig) {
+  const loginUrl = buildGasGxSignInUrl(authConfig)
+  const popup = await createPopupWindow(loginUrl)
+
+  try {
+    const session = await waitForSyncedGoogleSession(popup.id, 180000)
+    if (session?.accessToken) {
+      return session
+    }
+    throw new Error("Login window closed or timed out before extension session was synced.")
+  } finally {
+    await closeWindowById(popup.id)
+  }
 }
 
 function buildSupabaseGoogleUrl(authConfig, redirectTo) {
@@ -497,31 +648,153 @@ async function fetchSupabaseUser(authConfig, accessToken) {
   return await response.json()
 }
 
+function pickBestSparkCandidate(candidates) {
+  let best = null
+  let bestScore = -1
+  candidates.forEach((candidate) => {
+    if (!isPlainObject(candidate)) return
+    const normalized = normalizeSparkSettings(
+      {
+        enabled: candidate.enabled,
+        url:
+          candidate.url ??
+          candidate.ws_url ??
+          candidate.websocket_url ??
+          candidate.spark_url ??
+          "",
+        app_id: candidate.app_id ?? candidate.appid ?? candidate.appId ?? "",
+        api_key: candidate.api_key ?? candidate.apiKey ?? "",
+        api_secret: candidate.api_secret ?? candidate.apiSecret ?? candidate.secret ?? "",
+        domain: candidate.domain ?? candidate.spark_domain ?? candidate.model ?? ""
+      },
+      XAC_DEFAULT_SPARK_SETTINGS
+    )
+    const score = XAC_REQUIRED_SPARK_FIELDS.reduce((count, field) => {
+      return count + (toStringValue(normalized[field], "") ? 1 : 0)
+    }, 0)
+    if (score > bestScore) {
+      bestScore = score
+      best = normalized
+    }
+  })
+  return best
+}
+
+async function fetchRemoteSparkSettings(authConfig, accessToken = "") {
+  const endpoint = new URL("/rest/v1/global_config", authConfig.supabaseUrl)
+  endpoint.searchParams.set("select", "settings")
+  endpoint.searchParams.set("config_name", "eq.xfyun")
+  endpoint.searchParams.set("limit", "1")
+
+  const headers = {
+    apikey: authConfig.supabaseKey,
+    Authorization: `Bearer ${toStringValue(accessToken, authConfig.supabaseKey)}`
+  }
+
+  const response = await fetch(endpoint.toString(), {
+    method: "GET",
+    headers
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Remote Spark settings request failed: ${response.status} ${body}`)
+  }
+
+  const rows = await response.json()
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error("Remote Spark settings row not found in global_config (config_name=xfyun).")
+  }
+
+  const settings = rows[0]?.settings
+  if (!isPlainObject(settings)) {
+    throw new Error("Remote Spark settings payload is empty.")
+  }
+
+  const candidates = [settings?.ai, settings?.xfyun, settings?.spark, settings]
+  const picked = pickBestSparkCandidate(candidates)
+  if (!picked) {
+    throw new Error("Remote Spark settings payload is not a valid object.")
+  }
+
+  return picked
+}
+
+async function syncSparkSettingsFromGasGx() {
+  const authConfig = await getAuthConfig()
+  if (!authConfig.supabaseUrl || !authConfig.supabaseKey) {
+    throw new Error("Supabase config is incomplete. Please check GasGx auth settings.")
+  }
+
+  const session = await getGoogleSession()
+  const attemptTokens = []
+  if (toStringValue(session?.accessToken, "")) {
+    attemptTokens.push(session.accessToken)
+  }
+  attemptTokens.push(authConfig.supabaseKey)
+
+  let lastError = null
+  for (const token of attemptTokens) {
+    try {
+      const remote = await fetchRemoteSparkSettings(authConfig, token)
+      const merged = await setSparkSettings(remote)
+      return createPublicSparkSettings(merged)
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw new Error(safeErrorMessage(lastError) || "Failed to sync Spark settings from GasGx.")
+}
+
 async function signInWithGoogle() {
   const authConfig = await getAuthConfig()
   if (!authConfig.supabaseUrl || !authConfig.supabaseKey) {
     throw new Error("Supabase auth config is incomplete. Please check GasGx auth settings.")
   }
 
-  const redirectTo = chrome.identity.getRedirectURL("xac-google")
-  const authUrl = buildSupabaseGoogleUrl(authConfig, redirectTo)
-  const callbackUrl = await launchWebAuthFlow(authUrl, true)
-  const tokens = parseAuthCallbackUrl(callbackUrl)
-  const profile = await fetchSupabaseUser(authConfig, tokens.accessToken)
-
-  const session = {
-    provider: "google",
-    accessToken: tokens.accessToken,
-    refreshToken: tokens.refreshToken,
-    tokenType: tokens.tokenType,
-    expiresIn: tokens.expiresIn,
-    expiresAt: Date.now() + tokens.expiresIn * 1000,
-    user: profile,
-    signedInAt: new Date().toISOString()
+  const existing = await getGoogleSession()
+  if (existing?.accessToken) {
+    return existing
   }
 
-  await storageSet({ [XAC_STORAGE_KEYS.googleSession]: session })
-  return session
+  // Prefer popup mode to avoid redirecting the user's current tab.
+  try {
+    const popupSession = await signInViaGasGxPopup(authConfig)
+    if (popupSession?.accessToken) {
+      return popupSession
+    }
+  } catch (_popupError) {
+    // fall through to web auth flow fallback
+  }
+
+  const redirectTo = chrome.identity.getRedirectURL("xac-google")
+  const authUrl = buildSupabaseGoogleUrl(authConfig, redirectTo)
+
+  let tokens = null
+  try {
+    const callbackUrl = await launchWebAuthFlow(authUrl, true)
+    tokens = parseAuthCallbackUrl(callbackUrl)
+  } catch (error) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await sleep(450)
+      const synced = await getGoogleSession()
+      if (synced?.accessToken) {
+        return synced
+      }
+    }
+    throw new Error(safeErrorMessage(error))
+  }
+
+  const profile = await fetchSupabaseUser(authConfig, tokens.accessToken)
+  return await upsertGoogleSession(
+    {
+      ...tokens,
+      user: profile,
+      signedInAt: new Date().toISOString()
+    },
+    { fetchUser: false }
+  )
 }
 
 async function signOutGoogle() {
@@ -636,16 +909,27 @@ function buildSparkPayload(settings, requestPayload) {
 
 async function callSparkModel(requestPayload) {
   const storedSettings = await getSparkSettings()
-  const mergedSettings = normalizeSparkSettings(requestPayload.settings, storedSettings)
+  let mergedSettings = normalizeSparkSettings(requestPayload.settings, storedSettings)
 
   if (!mergedSettings.enabled) {
     throw new Error("Spark model is disabled in settings.")
   }
 
-  const requiredFields = ["url", "app_id", "api_key", "api_secret"]
-  const missing = requiredFields.filter((field) => !toStringValue(mergedSettings[field], ""))
+  let missing = getMissingSparkFields(mergedSettings)
   if (missing.length > 0) {
-    throw new Error(`Spark settings missing required fields: ${missing.join(", ")}`)
+    try {
+      await syncSparkSettingsFromGasGx()
+      const refreshed = await getSparkSettings()
+      mergedSettings = normalizeSparkSettings(requestPayload.settings, refreshed)
+      missing = getMissingSparkFields(mergedSettings)
+    } catch (_syncError) {
+      // Ignore sync failure and keep the original missing-fields error below.
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `Spark settings incomplete. Missing: ${missing.join(", ")}. Open extension popup > Spark Settings and save.`
+    )
   }
 
   const websocketUrl = await createSparkAuthorizedUrl(mergedSettings)
@@ -778,6 +1062,10 @@ async function handleXacMessage(message) {
       const googleSession = await signInWithGoogle()
       return success({ googleSession })
     }
+    case "xac:sync-google-session": {
+      const googleSession = await upsertGoogleSession(message.session || message.payload || {}, { fetchUser: true })
+      return success({ googleSession, synced: true })
+    }
     case "xac:google-sign-out": {
       await signOutGoogle()
       return success({ signedOut: true })
@@ -785,6 +1073,10 @@ async function handleXacMessage(message) {
     case "xac:get-spark-settings": {
       const sparkSettings = await getSparkSettings()
       return success({ sparkSettings: createPublicSparkSettings(sparkSettings) })
+    }
+    case "xac:sync-spark-settings": {
+      const sparkSettings = await syncSparkSettingsFromGasGx()
+      return success({ sparkSettings, synced: true })
     }
     case "xac:get-profile-state": {
       const profileState = await getProfileState()
@@ -812,6 +1104,32 @@ async function handleXacMessage(message) {
       return failure(`Unsupported xacAction: ${message.xacAction}`)
   }
 }
+
+async function reloadXTabsAfterUpdate() {
+  const patterns = ["*://*.x.com/*", "*://*.twitter.com/*"]
+  const tabs = await new Promise((resolve) => {
+    chrome.tabs.query({ url: patterns }, (items) => {
+      resolve(Array.isArray(items) ? items : [])
+    })
+  })
+
+  for (const tab of tabs) {
+    if (typeof tab?.id !== "number") continue
+    try {
+      await new Promise((resolve) => {
+        chrome.tabs.reload(tab.id, {}, () => resolve(true))
+      })
+    } catch (_error) {
+      // Ignore per-tab reload failures.
+    }
+  }
+}
+
+chrome.runtime.onInstalled.addListener((details) => {
+  const reason = String(details?.reason || "")
+  if (reason !== "update" && reason !== "install") return
+  reloadXTabsAfterUpdate().catch(() => {})
+})
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || !message.xacAction) {

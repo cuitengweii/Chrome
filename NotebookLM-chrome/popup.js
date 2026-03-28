@@ -1,4 +1,4 @@
-import { getLocale, setLocale, fillLocaleSelect, t, localizeResult, localizeMode } from "./i18n.js";
+﻿import { getLocale, setLocale, fillLocaleSelect, t, localizeResult, localizeMode } from "./i18n.js";
 
 const MESSAGE_TIMEOUT_MS = 30000;
 const POPUP_NOTEBOOK_KEY = "popupSelectedNotebook";
@@ -151,8 +151,10 @@ function resultTone(result) {
 
 function formatUsage(current, limit) {
   const value = Number(current || 0);
-  return Number.isFinite(limit) ? `${value} / ${limit}` : `${value} / ∞`;
+  if (Number.isFinite(limit)) return `${value} / ${limit}`;
+  return `${value} / ∞`;
 }
+
 
 function setButtonLoading(button, loadingText) {
   return async (task) => {
@@ -262,7 +264,7 @@ function showInfoDialog(title, message, onConfirm = null) {
   state.infoDialogHandler = typeof onConfirm === "function" ? onConfirm : null;
   el.infoDialogTitle.textContent = title;
   el.infoDialogMessage.textContent = message;
-  el.infoDialogConfirm.textContent = text("知道了", "Got it");
+  el.infoDialogConfirm.textContent = text("鐭ラ亾浜?, "Got it");
   showDialog(el.infoDialog);
 }
 
@@ -278,34 +280,34 @@ function renderStaticText() {
   el.brandCaption.textContent = text("NOTEBOOKLM WORKSPACE", "NOTEBOOKLM WORKSPACE");
   el.versionBadge.textContent = `v${manifest.version}`;
   el.heroSummary.textContent = text(
-    "导入当前页面、快速建本、截图留存、提示词管理，现在都集中在这里。",
+    "瀵煎叆褰撳墠椤甸潰銆佸揩閫熷缓鏈€佹埅鍥剧暀瀛樸€佹彁绀鸿瘝绠＄悊锛岀幇鍦ㄩ兘闆嗕腑鍦ㄨ繖閲屻€?,
     "Import the current page, quick-create notebooks, capture pages, and manage prompts from one place."
   );
-  el.upgradeButton.textContent = state.user?.tier === "basic" ? text("升级", "Upgrade") : text("Pro", "Pro");
+  el.upgradeButton.textContent = state.user?.tier === "basic" ? text("鍗囩骇", "Upgrade") : text("Pro", "Pro");
   el.upgradeButton.hidden = String(state.user?.tier || "pro").toLowerCase() !== "basic";
-  el.openPromptsBtn.textContent = text("提示词", "Prompts");
-  el.manageFeaturesBtn.textContent = text("功能设置", "Manage Features");
-  el.manageNotebooksDropdownBtn.textContent = text("管理笔记本", "Manage Notebooks");
-  el.manageSubscriptionBtn.textContent = text("管理订阅", "Manage Subscription");
-  el.claimPurchaseBtn.textContent = text("领取购买", "Claim Purchase");
-  el.customSubscriptionBtn.textContent = text("定制订阅", "Custom Subscription");
-  el.docsBtn.textContent = text("使用文档", "Documentation");
-  el.tutorialBtn.textContent = text("新手教程", "Tutorial");
-  el.featureRequestBtn.textContent = text("功能建议", "Feature Request");
-  el.contactUsBtn.textContent = text("联系我们", "Contact Us");
-  el.visitWebsiteBtn.textContent = text("访问 NotebookLM", "Visit NotebookLM");
-  el.signOutBtn.textContent = text("切换到基础版", "Switch to Basic");
-  el.deleteAccountBtn.textContent = text("清空本地工作区", "Clear Local Workspace");
-  el.accountLabel.textContent = text("本地账号", "Local Account");
-  el.usageImportLabel.textContent = text("导入", "Imports");
-  el.usageExportLabel.textContent = text("导出", "Exports");
-  el.usageSourceViewLabel.textContent = text("来源查看", "Source Views");
-  el.usageCaptureLabel.textContent = text("截图", "Capture");
-  el.currentPageLabel.textContent = text("当前页面", "Current Page");
-  el.targetNotebookLabel.textContent = text("目标 Notebook", "Target Notebook");
-  el.importCurrentPage.textContent = text("导入当前页", "Import Current Page");
-  el.quickImportCurrentPage.textContent = text("快速导入", "Quick Import");
-  el.captureCurrentPage.textContent = text("截图", "Capture");
+  el.openPromptsBtn.textContent = text("鎻愮ず璇?, "Prompts");
+  el.manageFeaturesBtn.textContent = text("鍔熻兘璁剧疆", "Manage Features");
+  el.manageNotebooksDropdownBtn.textContent = text("绠＄悊绗旇鏈?, "Manage Notebooks");
+  el.manageSubscriptionBtn.textContent = text("绠＄悊璁㈤槄", "Manage Subscription");
+  el.claimPurchaseBtn.textContent = text("棰嗗彇璐拱", "Claim Purchase");
+  el.customSubscriptionBtn.textContent = text("瀹氬埗璁㈤槄", "Custom Subscription");
+  el.docsBtn.textContent = text("浣跨敤鏂囨。", "Documentation");
+  el.tutorialBtn.textContent = text("鏂版墜鏁欑▼", "Tutorial");
+  el.featureRequestBtn.textContent = text("鍔熻兘寤鸿", "Feature Request");
+  el.contactUsBtn.textContent = text("鑱旂郴鎴戜滑", "Contact Us");
+  el.visitWebsiteBtn.textContent = text("璁块棶 NotebookLM", "Visit NotebookLM");
+  el.signOutBtn.textContent = text("鍒囨崲鍒板熀纭€鐗?, "Switch to Basic");
+  el.deleteAccountBtn.textContent = text("娓呯┖鏈湴宸ヤ綔鍖?, "Clear Local Workspace");
+  el.accountLabel.textContent = text("鏈湴璐﹀彿", "Local Account");
+  el.usageImportLabel.textContent = text("瀵煎叆", "Imports");
+  el.usageExportLabel.textContent = text("瀵煎嚭", "Exports");
+  el.usageSourceViewLabel.textContent = text("鏉ユ簮鏌ョ湅", "Source Views");
+  el.usageCaptureLabel.textContent = text("鎴浘", "Capture");
+  el.currentPageLabel.textContent = text("褰撳墠椤甸潰", "Current Page");
+  el.targetNotebookLabel.textContent = text("鐩爣 Notebook", "Target Notebook");
+  el.importCurrentPage.textContent = text("瀵煎叆褰撳墠椤?, "Import Current Page");
+  el.quickImportCurrentPage.textContent = text("蹇€熷鍏?, "Quick Import");
+  el.captureCurrentPage.textContent = text("鎴浘", "Capture");
   el.scheduleStatusLabelText.textContent = t(state.locale, "popup.scheduleStatus");
   el.resultStatusLabelText.textContent = t(state.locale, "popup.resultStatus");
   el.ruleStatusLabelText.textContent = t(state.locale, "popup.ruleStatus");
@@ -313,21 +315,25 @@ function renderStaticText() {
   el.openNotebook.textContent = t(state.locale, "popup.openNotebook");
   el.openManager.textContent = t(state.locale, "popup.openManager");
   el.openOptions.textContent = t(state.locale, "popup.openOptions");
-  el.promptLibraryLabel.textContent = text("提示词库", "Prompt Library");
-  el.promptLibraryTitle.textContent = text("沉淀可复用提示词", "Save reusable prompts");
-  el.createPromptButton.textContent = text("新建", "New");
-  el.promptSearchInput.placeholder = text("搜索标题、内容或标签", "Search title, content, or tag");
-  el.logsTitleText.textContent = t(state.locale, "popup.logsTitle");
-  el.buildInfo.textContent = t(state.locale, "common.version", { version: manifest.version });
-  el.promptDialogTitle.textContent = text("编辑提示词", "Edit Prompt");
-  el.promptTitleLabel.textContent = text("标题", "Title");
-  el.promptFolderLabel.textContent = text("文件夹", "Folder");
-  el.promptTagsLabel.textContent = text("标签", "Tags");
-  el.promptContentLabel.textContent = text("内容", "Content");
-  el.promptFavoriteLabel.textContent = text("加入收藏", "Favorite this prompt");
-  el.promptDeleteButton.textContent = text("删除", "Delete");
-  el.promptCancelButton.textContent = text("取消", "Cancel");
-  el.promptSaveButton.textContent = text("保存", "Save");
+  el.promptLibraryLabel.textContent = text("鎻愮ず璇嶅簱", "Prompt Library");
+  el.promptLibraryTitle.textContent = text("娌夋穩鍙鐢ㄦ彁绀鸿瘝", "Save reusable prompts");
+  el.createPromptButton.textContent = text("鏂板缓", "New");
+  el.promptSearchInput.placeholder = text("鎼滅储鏍囬銆佸唴瀹规垨鏍囩", "Search title, content, or tag");
+  if (el.logsTitleText) {
+    el.logsTitleText.textContent = t(state.locale, "popup.logsTitle");
+  }
+  if (el.buildInfo) {
+    el.buildInfo.textContent = t(state.locale, "common.version", { version: manifest.version });
+  }
+  el.promptDialogTitle.textContent = text("缂栬緫鎻愮ず璇?, "Edit Prompt");
+  el.promptTitleLabel.textContent = text("鏍囬", "Title");
+  el.promptFolderLabel.textContent = text("鏂囦欢澶?, "Folder");
+  el.promptTagsLabel.textContent = text("鏍囩", "Tags");
+  el.promptContentLabel.textContent = text("鍐呭", "Content");
+  el.promptFavoriteLabel.textContent = text("鍔犲叆鏀惰棌", "Favorite this prompt");
+  el.promptDeleteButton.textContent = text("鍒犻櫎", "Delete");
+  el.promptCancelButton.textContent = text("鍙栨秷", "Cancel");
+  el.promptSaveButton.textContent = text("淇濆瓨", "Save");
 }
 
 function renderUser() {
@@ -335,22 +341,22 @@ function renderUser() {
   const tier = String(user.tier || "pro").toLowerCase();
   const subscriptionType = String(user.subscription_type || "").toLowerCase();
   const isLifetime = tier === "pro" && subscriptionType === "lifetime";
-  el.tierPill.textContent = isLifetime ? text("本地 Pro", "Local Pro") : text("基础版", "Basic");
+  el.tierPill.textContent = isLifetime ? text("鏈湴 Pro", "Local Pro") : text("鍩虹鐗?, "Basic");
   el.accountEmail.textContent = user.email || "local@konglai.ai";
-  el.accountPlan.textContent = isLifetime ? text("终身版", "Lifetime") : text("基础版", "Basic");
+  el.accountPlan.textContent = isLifetime ? text("缁堣韩鐗?, "Lifetime") : text("鍩虹鐗?, "Basic");
   el.usageImportValue.textContent = formatUsage(user.import_count, user.import_limit);
   el.usageExportValue.textContent = formatUsage(user.export_count, user.export_limit);
   el.usageSourceViewValue.textContent = formatUsage(user.source_view_count, Number.POSITIVE_INFINITY);
   el.usageCaptureValue.textContent = formatUsage(user.capture_count, Number.POSITIVE_INFINITY);
-  el.upgradeButton.textContent = tier === "basic" ? text("升级", "Upgrade") : text("Pro", "Pro");
+  el.upgradeButton.textContent = tier === "basic" ? text("鍗囩骇", "Upgrade") : text("Pro", "Pro");
   el.upgradeButton.hidden = tier !== "basic";
 }
 
 function renderCurrentTab() {
   const tab = state.currentTab;
   if (!tab?.url) {
-    el.currentPageTitle.textContent = text("未检测到当前页面", "No active page detected");
-    el.currentPageUrl.textContent = text("请在任意网页中打开扩展。", "Open the extension on any webpage.");
+    el.currentPageTitle.textContent = text("鏈娴嬪埌褰撳墠椤甸潰", "No active page detected");
+    el.currentPageUrl.textContent = text("璇峰湪浠绘剰缃戦〉涓墦寮€鎵╁睍銆?, "Open the extension on any webpage.");
     return;
   }
   el.currentPageTitle.textContent = tab.title || tab.url;
@@ -362,7 +368,7 @@ async function renderNotebookOptions() {
   const options = state.notebooks
     .map((item) => `<option value="${escapeHtml(item.url)}">${escapeHtml(item.title || item.url)}</option>`)
     .join("");
-  el.popupNotebookSelect.innerHTML = options || `<option value="">${escapeHtml(text("暂无可用 Notebook", "No notebooks found"))}</option>`;
+  el.popupNotebookSelect.innerHTML = options || `<option value="">${escapeHtml(text("鏆傛棤鍙敤 Notebook", "No notebooks found"))}</option>`;
   const selected = state.notebooks.find((item) => item.url === stored)?.url || state.notebooks[0]?.url || "";
   el.popupNotebookSelect.value = selected;
 }
@@ -411,11 +417,14 @@ function renderState() {
   el.toggleEnabled.textContent = rule.enabled
     ? t(state.locale, "popup.togglePause")
     : t(state.locale, "popup.toggleResume");
-
-  renderLogs(runtime);
+  if (el.logList) {
+    renderLogs(runtime);
+  }
 }
 
+
 function renderLogs(runtime) {
+  if (!el.logList) return;
   const recent = Array.isArray(runtime?.recentRuns) ? runtime.recentRuns : [];
   if (!recent.length) {
     el.logList.innerHTML = `<li class="empty-log">${escapeHtml(t(state.locale, "popup.logsEmpty"))}</li>`;
@@ -423,7 +432,7 @@ function renderLogs(runtime) {
   }
   el.logList.innerHTML = recent.slice(0, 4).map((entry) => `
     <li class="log-entry">
-      <strong>${escapeHtml(localizeMode(state.locale, entry.mode))} · ${escapeHtml(localizeResult(state.locale, entry.result))}</strong>
+      <strong>${escapeHtml(localizeMode(state.locale, entry.mode))} 路 ${escapeHtml(localizeResult(state.locale, entry.result))}</strong>
       <span>${escapeHtml(formatTime(entry.at))}</span>
       <span>${escapeHtml(entry.message || "-")}</span>
     </li>
@@ -431,7 +440,7 @@ function renderLogs(runtime) {
 }
 
 function renderPromptFolderFilter() {
-  const options = [{ id: "all", name: text("全部文件夹", "All Folders") }, ...state.promptFolders];
+  const options = [{ id: "all", name: text("鍏ㄩ儴鏂囦欢澶?, "All Folders") }, ...state.promptFolders];
   el.promptFolderFilter.innerHTML = options.map((item) => (
     `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`
   )).join("");
@@ -453,24 +462,24 @@ function renderPrompts() {
   });
 
   if (!rows.length) {
-    el.promptList.innerHTML = `<div class="prompt-item"><div class="prompt-content">${escapeHtml(text("暂无提示词，点击右上角新建。", "No prompts yet. Click New to create one."))}</div></div>`;
+    el.promptList.innerHTML = `<div class="prompt-item"><div class="prompt-content">${escapeHtml(text("鏆傛棤鎻愮ず璇嶏紝鐐瑰嚮鍙充笂瑙掓柊寤恒€?, "No prompts yet. Click New to create one."))}</div></div>`;
     return;
   }
 
   el.promptList.innerHTML = rows.map((item) => {
-    const folderName = state.promptFolders.find((folder) => folder.id === item.folderId)?.name || text("未分组", "Ungrouped");
+    const folderName = state.promptFolders.find((folder) => folder.id === item.folderId)?.name || text("鏈垎缁?, "Ungrouped");
     return `
       <article class="prompt-item" data-prompt-id="${escapeHtml(item.id)}">
         <div class="prompt-item-head">
-          <div class="prompt-item-title">${escapeHtml(item.favorite ? `★ ${item.title}` : item.title)}</div>
+          <div class="prompt-item-title">${escapeHtml(item.favorite ? `鈽?${item.title}` : item.title)}</div>
           <span class="prompt-folder-badge">${escapeHtml(folderName)}</span>
         </div>
         <div class="prompt-content">${escapeHtml(item.content)}</div>
         <div class="prompt-tag-list">${(item.tags || []).map((tag) => `<span class="prompt-tag">${escapeHtml(tag)}</span>`).join("")}</div>
         <div class="prompt-item-actions">
-          <button class="mini-button secondary-button" type="button" data-action="copy" data-prompt-id="${escapeHtml(item.id)}">${escapeHtml(text("复制", "Copy"))}</button>
-          <button class="mini-button secondary-button" type="button" data-action="edit" data-prompt-id="${escapeHtml(item.id)}">${escapeHtml(text("编辑", "Edit"))}</button>
-          <button class="mini-button ghost-button" type="button" data-action="delete" data-prompt-id="${escapeHtml(item.id)}">${escapeHtml(text("删除", "Delete"))}</button>
+          <button class="mini-button secondary-button" type="button" data-action="copy" data-prompt-id="${escapeHtml(item.id)}">${escapeHtml(text("澶嶅埗", "Copy"))}</button>
+          <button class="mini-button secondary-button" type="button" data-action="edit" data-prompt-id="${escapeHtml(item.id)}">${escapeHtml(text("缂栬緫", "Edit"))}</button>
+          <button class="mini-button ghost-button" type="button" data-action="delete" data-prompt-id="${escapeHtml(item.id)}">${escapeHtml(text("鍒犻櫎", "Delete"))}</button>
         </div>
       </article>
     `;
@@ -483,8 +492,8 @@ function renderPrompts() {
       const action = button.dataset.action;
       if (action === "copy") {
         navigator.clipboard.writeText(prompt.content || "")
-          .then(() => setStatus(text("提示词已复制。", "Prompt copied.")))
-          .catch((error) => setStatus(text(`复制失败：${error.message}`, `Copy failed: ${error.message}`)));
+          .then(() => setStatus(text("鎻愮ず璇嶅凡澶嶅埗銆?, "Prompt copied.")))
+          .catch((error) => setStatus(text(`澶嶅埗澶辫触锛?{error.message}`, `Copy failed: ${error.message}`)));
         return;
       }
       if (action === "edit") {
@@ -492,7 +501,7 @@ function renderPrompts() {
         return;
       }
       if (action === "delete") {
-        deletePrompt(prompt.id).catch((error) => setStatus(text(`删除失败：${error.message}`, `Delete failed: ${error.message}`)));
+        deletePrompt(prompt.id).catch((error) => setStatus(text(`鍒犻櫎澶辫触锛?{error.message}`, `Delete failed: ${error.message}`)));
       }
     });
   });
@@ -500,7 +509,7 @@ function renderPrompts() {
 
 function openPromptDialog(prompt = null) {
   state.editingPromptId = prompt?.id || "";
-  el.promptDialogTitle.textContent = prompt ? text("编辑提示词", "Edit Prompt") : text("新建提示词", "New Prompt");
+  el.promptDialogTitle.textContent = prompt ? text("缂栬緫鎻愮ず璇?, "Edit Prompt") : text("鏂板缓鎻愮ず璇?, "New Prompt");
   el.promptTitleInput.value = prompt?.title || "";
   const folderName = prompt?.folderId
     ? (state.promptFolders.find((item) => item.id === prompt.folderId)?.name || "")
@@ -539,7 +548,7 @@ async function savePromptFromDialog() {
   const title = String(el.promptTitleInput.value || "").trim();
   const content = String(el.promptContentInput.value || "").trim();
   if (!title || !content) {
-    setStatus(text("标题和内容不能为空。", "Title and content are required."));
+    setStatus(text("鏍囬鍜屽唴瀹逛笉鑳戒负绌恒€?, "Title and content are required."));
     return;
   }
 
@@ -559,7 +568,7 @@ async function savePromptFromDialog() {
   renderPrompts();
   await fetchUser().catch(() => undefined);
   renderUser();
-  setStatus(text("提示词已保存。", "Prompt saved."));
+  setStatus(text("鎻愮ず璇嶅凡淇濆瓨銆?, "Prompt saved."));
 }
 
 async function deletePrompt(id) {
@@ -570,7 +579,7 @@ async function deletePrompt(id) {
   renderPrompts();
   await fetchUser().catch(() => undefined);
   renderUser();
-  setStatus(text("提示词已删除。", "Prompt deleted."));
+  setStatus(text("鎻愮ず璇嶅凡鍒犻櫎銆?, "Prompt deleted."));
 }
 
 async function invokeAction(button, loadingText, task) {
@@ -578,9 +587,9 @@ async function invokeAction(button, loadingText, task) {
 }
 
 async function importCurrentPage() {
-  if (!state.currentTab?.url) throw new Error(text("未检测到当前页面。", "No current page detected."));
+  if (!state.currentTab?.url) throw new Error(text("鏈娴嬪埌褰撳墠椤甸潰銆?, "No current page detected."));
   const notebookUrl = String(el.popupNotebookSelect.value || "").trim();
-  if (!notebookUrl) throw new Error(text("请先选择目标 Notebook。", "Choose a target notebook first."));
+  if (!notebookUrl) throw new Error(text("璇峰厛閫夋嫨鐩爣 Notebook銆?, "Choose a target notebook first."));
   const response = await sendMessage({
     type: "IMPORT_CURRENT_PAGE",
     notebookUrl,
@@ -588,20 +597,20 @@ async function importCurrentPage() {
     pageTitle: state.currentTab.title || state.currentTab.url
   }, 120000);
   if (!response?.ok) throw new Error(response?.error || "import_current_page_failed");
-  setStatus(text("当前页面已导入到目标 Notebook。", "Current page imported to notebook."));
+  setStatus(text("褰撳墠椤甸潰宸插鍏ュ埌鐩爣 Notebook銆?, "Current page imported to notebook."));
   await fetchUser().catch(() => undefined);
   renderUser();
 }
 
 async function quickImportCurrentPage() {
-  if (!state.currentTab?.url) throw new Error(text("未检测到当前页面。", "No current page detected."));
+  if (!state.currentTab?.url) throw new Error(text("鏈娴嬪埌褰撳墠椤甸潰銆?, "No current page detected."));
   const response = await sendMessage({
     type: "QUICK_IMPORT_CURRENT_PAGE",
     pageUrl: state.currentTab.url,
     pageTitle: state.currentTab.title || state.currentTab.url
   }, 180000);
   if (!response?.ok) throw new Error(response?.error || "quick_import_current_page_failed");
-  setStatus(text("快速导入完成，已创建新 Notebook。", "Quick import finished and created a new notebook."));
+  setStatus(text("蹇€熷鍏ュ畬鎴愶紝宸插垱寤烘柊 Notebook銆?, "Quick import finished and created a new notebook."));
   if (response.notebookUrl) {
     await chrome.tabs.create({ url: response.notebookUrl, active: true });
   }
@@ -611,14 +620,14 @@ async function quickImportCurrentPage() {
 }
 
 async function captureCurrentPage() {
-  if (!state.currentTab) throw new Error(text("未检测到当前页面。", "No current page detected."));
+  if (!state.currentTab) throw new Error(text("鏈娴嬪埌褰撳墠椤甸潰銆?, "No current page detected."));
   const response = await sendMessage({
     type: "CAPTURE_CURRENT_PAGE",
     windowId: state.currentTab.windowId,
     title: state.currentTab.title || "page-capture"
   }, 120000);
   if (!response?.ok) throw new Error(response?.error || "capture_current_page_failed");
-  setStatus(text("页面截图下载已开始。", "Page capture download started."));
+  setStatus(text("椤甸潰鎴浘涓嬭浇宸插紑濮嬨€?, "Page capture download started."));
   await fetchUser().catch(() => undefined);
   renderUser();
 }
@@ -707,9 +716,9 @@ function bindEvents() {
   });
 
   el.openPromptsBtn.addEventListener("click", () => {
-    invokeAction(el.openPromptsBtn, text("打开中...", "Opening..."), openPromptsPage)
+    invokeAction(el.openPromptsBtn, text("鎵撳紑涓?..", "Opening..."), openPromptsPage)
       .then(() => window.close())
-      .catch((error) => setStatus(text(`打开失败：${error.message}`, `Open failed: ${error.message}`)));
+      .catch((error) => setStatus(text(`鎵撳紑澶辫触锛?{error.message}`, `Open failed: ${error.message}`)));
   });
 
   el.promptSearchInput.addEventListener("input", () => {
@@ -727,11 +736,11 @@ function bindEvents() {
   el.promptCancelButton.addEventListener("click", () => closeDialog(el.promptDialog));
   el.promptDeleteButton.addEventListener("click", () => {
     if (!state.editingPromptId) return;
-    deletePrompt(state.editingPromptId).catch((error) => setStatus(text(`删除失败：${error.message}`, `Delete failed: ${error.message}`)));
+    deletePrompt(state.editingPromptId).catch((error) => setStatus(text(`鍒犻櫎澶辫触锛?{error.message}`, `Delete failed: ${error.message}`)));
   });
   el.promptSaveButton.addEventListener("click", () => {
-    invokeAction(el.promptSaveButton, text("保存中...", "Saving..."), savePromptFromDialog)
-      .catch((error) => setStatus(text(`保存失败：${error.message}`, `Save failed: ${error.message}`)));
+    invokeAction(el.promptSaveButton, text("淇濆瓨涓?..", "Saving..."), savePromptFromDialog)
+      .catch((error) => setStatus(text(`淇濆瓨澶辫触锛?{error.message}`, `Save failed: ${error.message}`)));
   });
 
   el.infoDialogCloseTop.addEventListener("click", () => closeInfoDialog());
@@ -742,7 +751,7 @@ function bindEvents() {
       try {
         await handler();
       } catch (error) {
-        setStatus(text(`操作失败：${error.message}`, `Action failed: ${error.message}`));
+        setStatus(text(`鎿嶄綔澶辫触锛?{error.message}`, `Action failed: ${error.message}`));
       }
     }
   });
@@ -750,17 +759,17 @@ function bindEvents() {
   el.upgradeButton.addEventListener("click", () => {
     if (String(state.user?.tier || "pro").toLowerCase() === "pro") {
       showInfoDialog(
-        text("专业版已启用", "Pro already enabled"),
-        text("当前本地工作区已经是 Pro 模式，所有高级功能均已解锁。", "This local workspace is already in Pro mode with advanced features unlocked.")
+        text("涓撲笟鐗堝凡鍚敤", "Pro already enabled"),
+        text("褰撳墠鏈湴宸ヤ綔鍖哄凡缁忔槸 Pro 妯″紡锛屾墍鏈夐珮绾у姛鑳藉潎宸茶В閿併€?, "This local workspace is already in Pro mode with advanced features unlocked.")
       );
       return;
     }
     showInfoDialog(
-      text("升级本地 Pro", "Upgrade local Pro"),
-      text("这会把当前本地账号切换到 Pro 模式，并解除基础版限制。", "This switches the current local account to Pro mode and unlocks basic-tier limits."),
+      text("鍗囩骇鏈湴 Pro", "Upgrade local Pro"),
+      text("杩欎細鎶婂綋鍓嶆湰鍦拌处鍙峰垏鎹㈠埌 Pro 妯″紡锛屽苟瑙ｉ櫎鍩虹鐗堥檺鍒躲€?, "This switches the current local account to Pro mode and unlocks basic-tier limits."),
       async () => {
         await switchToPro();
-        setStatus(text("本地 Pro 已启用。", "Local Pro enabled."));
+        setStatus(text("鏈湴 Pro 宸插惎鐢ㄣ€?, "Local Pro enabled."));
       }
     );
   });
@@ -773,26 +782,26 @@ function bindEvents() {
 
   el.manageNotebooksDropdownBtn.addEventListener("click", () => {
     toggleSettingsDropdown(false);
-    invokeAction(el.manageNotebooksDropdownBtn, text("打开中...", "Opening..."), openManager)
-      .catch((error) => setStatus(text(`打开失败：${error.message}`, `Open failed: ${error.message}`)));
+    invokeAction(el.manageNotebooksDropdownBtn, text("鎵撳紑涓?..", "Opening..."), openManager)
+      .catch((error) => setStatus(text(`鎵撳紑澶辫触锛?{error.message}`, `Open failed: ${error.message}`)));
   });
 
   el.manageSubscriptionBtn.addEventListener("click", () => {
     toggleSettingsDropdown(false);
     showInfoDialog(
-      text("本地订阅状态", "Local subscription status"),
-      text("当前版本采用本地授权模式，不依赖在线订阅中心。你可以直接在这里切换基础版或 Pro。", "This build uses local licensing, so there is no online billing center. You can switch between Basic and Pro here.")
+      text("鏈湴璁㈤槄鐘舵€?, "Local subscription status"),
+      text("褰撳墠鐗堟湰閲囩敤鏈湴鎺堟潈妯″紡锛屼笉渚濊禆鍦ㄧ嚎璁㈤槄涓績銆備綘鍙互鐩存帴鍦ㄨ繖閲屽垏鎹㈠熀纭€鐗堟垨 Pro銆?, "This build uses local licensing, so there is no online billing center. You can switch between Basic and Pro here.")
     );
   });
 
   el.claimPurchaseBtn.addEventListener("click", () => {
     toggleSettingsDropdown(false);
     showInfoDialog(
-      text("领取本地 Pro", "Claim local Pro"),
-      text("确认后会直接把当前本地账号标记为 Pro。", "Confirm to mark the current local account as Pro."),
+      text("棰嗗彇鏈湴 Pro", "Claim local Pro"),
+      text("纭鍚庝細鐩存帴鎶婂綋鍓嶆湰鍦拌处鍙锋爣璁颁负 Pro銆?, "Confirm to mark the current local account as Pro."),
       async () => {
         await switchToPro();
-        setStatus(text("本地 Pro 已领取。", "Local Pro claimed."));
+        setStatus(text("鏈湴 Pro 宸查鍙栥€?, "Local Pro claimed."));
       }
     );
   });
@@ -800,8 +809,8 @@ function bindEvents() {
   el.customSubscriptionBtn.addEventListener("click", () => {
     toggleSettingsDropdown(false);
     showInfoDialog(
-      text("定制订阅说明", "Custom subscription"),
-      text("当前是离线本地版，暂不接支付流。若后续接入企业授权，可在这个入口扩展。", "This is an offline local build without payments. This entry is reserved for future enterprise licensing.")
+      text("瀹氬埗璁㈤槄璇存槑", "Custom subscription"),
+      text("褰撳墠鏄绾挎湰鍦扮増锛屾殏涓嶆帴鏀粯娴併€傝嫢鍚庣画鎺ュ叆浼佷笟鎺堟潈锛屽彲鍦ㄨ繖涓叆鍙ｆ墿灞曘€?, "This is an offline local build without payments. This entry is reserved for future enterprise licensing.")
     );
   });
 
@@ -815,25 +824,25 @@ function bindEvents() {
     toggleSettingsDropdown(false);
     const response = await sendMessage({ type: "OPEN_NOTEBOOK" }, 30000).catch(() => null);
     if (response?.ok) {
-      setStatus(text("已打开 Notebook，新手流程请结合设置页说明使用。", "Notebook opened. Use the guide in Settings for the onboarding flow."));
+      setStatus(text("宸叉墦寮€ Notebook锛屾柊鎵嬫祦绋嬭缁撳悎璁剧疆椤佃鏄庝娇鐢ㄣ€?, "Notebook opened. Use the guide in Settings for the onboarding flow."));
     } else {
-      setStatus(text("请先在设置页查看首次使用说明。", "Please open Settings to view the onboarding guide."));
+      setStatus(text("璇峰厛鍦ㄨ缃〉鏌ョ湅棣栨浣跨敤璇存槑銆?, "Please open Settings to view the onboarding guide."));
     }
   });
 
   el.featureRequestBtn.addEventListener("click", () => {
     toggleSettingsDropdown(false);
     showInfoDialog(
-      text("功能建议", "Feature request"),
-      text("这一版已经把参考扩展的大部分核心工作台能力本地化了；如果你还想继续 1:1 补齐，可以继续在这个线程里直接提。", "Most core workspace features from the reference extension have been localized here. If you want even tighter 1:1 parity, just keep adding requests in this thread.")
+      text("鍔熻兘寤鸿", "Feature request"),
+      text("杩欎竴鐗堝凡缁忔妸鍙傝€冩墿灞曠殑澶ч儴鍒嗘牳蹇冨伐浣滃彴鑳藉姏鏈湴鍖栦簡锛涘鏋滀綘杩樻兂缁х画 1:1 琛ラ綈锛屽彲浠ョ户缁湪杩欎釜绾跨▼閲岀洿鎺ユ彁銆?, "Most core workspace features from the reference extension have been localized here. If you want even tighter 1:1 parity, just keep adding requests in this thread.")
     );
   });
 
   el.contactUsBtn.addEventListener("click", () => {
     toggleSettingsDropdown(false);
     showInfoDialog(
-      text("联系入口", "Contact"),
-      text("当前版本没有外部客服中心，建议直接通过当前协作线程继续迭代需求。", "This build has no external support portal, so the fastest path is continuing through this collaboration thread.")
+      text("鑱旂郴鍏ュ彛", "Contact"),
+      text("褰撳墠鐗堟湰娌℃湁澶栭儴瀹㈡湇涓績锛屽缓璁洿鎺ラ€氳繃褰撳墠鍗忎綔绾跨▼缁х画杩唬闇€姹傘€?, "This build has no external support portal, so the fastest path is continuing through this collaboration thread.")
     );
   });
 
@@ -845,11 +854,11 @@ function bindEvents() {
   el.signOutBtn.addEventListener("click", () => {
     toggleSettingsDropdown(false);
     showInfoDialog(
-      text("切换到基础版", "Switch to Basic"),
-      text("确认后会把当前本地账号切回基础版，但不会删除你的规则。", "Confirm to switch the current local account back to Basic without deleting your rules."),
+      text("鍒囨崲鍒板熀纭€鐗?, "Switch to Basic"),
+      text("纭鍚庝細鎶婂綋鍓嶆湰鍦拌处鍙峰垏鍥炲熀纭€鐗堬紝浣嗕笉浼氬垹闄や綘鐨勮鍒欍€?, "Confirm to switch the current local account back to Basic without deleting your rules."),
       async () => {
         await switchToBasic();
-        setStatus(text("已切换为基础版。", "Switched to Basic."));
+        setStatus(text("宸插垏鎹负鍩虹鐗堛€?, "Switched to Basic."));
       }
     );
   });
@@ -857,47 +866,47 @@ function bindEvents() {
   el.deleteAccountBtn.addEventListener("click", () => {
     toggleSettingsDropdown(false);
     showInfoDialog(
-      text("清空本地工作区", "Clear local workspace"),
-      text("这会清空本地提示词、来源批注和用量统计，并把账号重置为基础版。", "This clears local prompts, source notes, and usage stats, then resets the account to Basic."),
+      text("娓呯┖鏈湴宸ヤ綔鍖?, "Clear local workspace"),
+      text("杩欎細娓呯┖鏈湴鎻愮ず璇嶃€佹潵婧愭壒娉ㄥ拰鐢ㄩ噺缁熻锛屽苟鎶婅处鍙烽噸缃负鍩虹鐗堛€?, "This clears local prompts, source notes, and usage stats, then resets the account to Basic."),
       async () => {
         await clearWorkspace();
-        setStatus(text("本地工作区已重置。", "Local workspace reset."));
+        setStatus(text("鏈湴宸ヤ綔鍖哄凡閲嶇疆銆?, "Local workspace reset."));
       }
     );
   });
 
   el.importCurrentPage.addEventListener("click", () => {
-    invokeAction(el.importCurrentPage, text("导入中...", "Importing..."), importCurrentPage)
-      .catch((error) => setStatus(text(`导入失败：${error.message}`, `Import failed: ${error.message}`)));
+    invokeAction(el.importCurrentPage, text("瀵煎叆涓?..", "Importing..."), importCurrentPage)
+      .catch((error) => setStatus(text(`瀵煎叆澶辫触锛?{error.message}`, `Import failed: ${error.message}`)));
   });
 
   el.quickImportCurrentPage.addEventListener("click", () => {
-    invokeAction(el.quickImportCurrentPage, text("处理中...", "Working..."), quickImportCurrentPage)
-      .catch((error) => setStatus(text(`快速导入失败：${error.message}`, `Quick import failed: ${error.message}`)));
+    invokeAction(el.quickImportCurrentPage, text("澶勭悊涓?..", "Working..."), quickImportCurrentPage)
+      .catch((error) => setStatus(text(`蹇€熷鍏ュけ璐ワ細${error.message}`, `Quick import failed: ${error.message}`)));
   });
 
   el.captureCurrentPage.addEventListener("click", () => {
-    invokeAction(el.captureCurrentPage, text("截图中...", "Capturing..."), captureCurrentPage)
-      .catch((error) => setStatus(text(`截图失败：${error.message}`, `Capture failed: ${error.message}`)));
+    invokeAction(el.captureCurrentPage, text("鎴浘涓?..", "Capturing..."), captureCurrentPage)
+      .catch((error) => setStatus(text(`鎴浘澶辫触锛?{error.message}`, `Capture failed: ${error.message}`)));
   });
 
   el.runNow.addEventListener("click", () => {
-    invokeAction(el.runNow, text("执行中...", "Running..."), runNow)
+    invokeAction(el.runNow, text("鎵ц涓?..", "Running..."), runNow)
       .catch((error) => setStatus(t(state.locale, "common.actionFailed", { message: error.message })));
   });
 
   el.openNotebook.addEventListener("click", () => {
-    invokeAction(el.openNotebook, text("打开中...", "Opening..."), openNotebook)
+    invokeAction(el.openNotebook, text("鎵撳紑涓?..", "Opening..."), openNotebook)
       .catch((error) => setStatus(t(state.locale, "common.actionFailed", { message: error.message })));
   });
 
   el.toggleEnabled.addEventListener("click", () => {
-    invokeAction(el.toggleEnabled, text("切换中...", "Switching..."), toggleEnabled)
+    invokeAction(el.toggleEnabled, text("鍒囨崲涓?..", "Switching..."), toggleEnabled)
       .catch((error) => setStatus(t(state.locale, "common.actionFailed", { message: error.message })));
   });
 
   el.openManager.addEventListener("click", () => {
-    invokeAction(el.openManager, text("打开中...", "Opening..."), openManager)
+    invokeAction(el.openManager, text("鎵撳紑涓?..", "Opening..."), openManager)
       .catch((error) => setStatus(t(state.locale, "common.actionFailed", { message: error.message })));
   });
 
@@ -964,8 +973,10 @@ async function bootstrap() {
     renderCurrentTab();
     renderState();
     renderPrompts();
-    setStatus(text(`加载失败：${error.message}`, `Load failed: ${error.message}`));
+    setStatus(text(`鍔犺浇澶辫触锛?{error.message}`, `Load failed: ${error.message}`));
   }
 }
 
 bootstrap();
+
+

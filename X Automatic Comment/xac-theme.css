@@ -118,6 +118,7 @@ body.xac-theme-dark ::-webkit-scrollbar-thumb:hover {
   width: min(92vw, 360px);
   font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
   color: var(--xac-text);
+  box-sizing: border-box;
 }
 
 #xac-widget .xac-shell {
@@ -126,6 +127,7 @@ body.xac-theme-dark ::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #143022 0%, #0d1d16 100%);
   box-shadow: var(--xac-shadow);
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 #xac-widget .xac-toggle {
@@ -151,6 +153,8 @@ body.xac-theme-dark ::-webkit-scrollbar-thumb:hover {
   padding: 12px;
   display: grid;
   gap: 10px;
+  box-sizing: border-box;
+  min-width: 0;
 }
 
 #xac-widget.xac-collapsed .xac-panel {
@@ -179,12 +183,14 @@ body.xac-theme-dark ::-webkit-scrollbar-thumb:hover {
 #xac-widget .xac-textarea,
 #xac-widget .xac-select {
   width: 100%;
+  box-sizing: border-box;
   border-radius: 8px;
   border: 1px solid var(--xac-border-soft);
   background: #0d1914;
   color: var(--xac-text);
   padding: 8px 10px;
   font-size: 12px;
+  min-width: 0;
 }
 
 #xac-widget .xac-input,
@@ -222,6 +228,14 @@ body.xac-theme-dark ::-webkit-scrollbar-thumb:hover {
   background: #12261d;
 }
 
+#xac-widget .xac-button:disabled,
+#xac-widget .xac-pill:disabled,
+#xac-widget .xac-toggle:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  filter: saturate(0.65);
+}
+
 #xac-widget .xac-button.primary {
   background: linear-gradient(120deg, #2ca65e, var(--xac-accent));
   color: #07140d;
@@ -252,14 +266,19 @@ body.xac-theme-dark ::-webkit-scrollbar-thumb:hover {
 
 #xac-widget .xac-grid-2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
+  min-width: 0;
 }
 
 #xac-widget .xac-note {
   font-size: 11px;
   line-height: 1.4;
   color: var(--xac-text-soft);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  min-width: 0;
 }
 
 #xac-widget .xac-status-ok {
@@ -301,5 +320,31 @@ body.xac-theme-dark ::-webkit-scrollbar-thumb:hover {
     right: 8px;
     bottom: 8px;
     width: calc(100vw - 16px);
+  }
+}
+
+body.xac-popup-mode {
+  margin: 0;
+  min-width: 360px;
+  min-height: 560px;
+}
+
+body.xac-popup-mode #xac-widget {
+  position: static;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+body.xac-popup-mode {
+  overflow-x: hidden;
+}
+
+@media (max-width: 420px) {
+  #xac-widget .xac-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

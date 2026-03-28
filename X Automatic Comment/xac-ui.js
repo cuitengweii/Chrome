@@ -28,6 +28,7 @@
       sparkTemp: "Temperature",
       sparkTokens: "Max Tokens",
       saveSpark: "Save Spark Settings",
+      syncSpark: "Sync From GasGx",
       saveSparkTip: "Leave secret fields empty to keep existing values.",
       promptLabel: "Prompt",
       promptPlaceholder: "Write the comment style or reply intent here...",
@@ -38,9 +39,18 @@
       loginRequired: "Google login may be required before calling external services.",
       footer: "1:1 clone kept. This panel is a compatibility enhancement layer.",
       busy: "Working...",
+      loggingIn: "Signing in with Google...",
+      loggingOut: "Signing out...",
+      savingSpark: "Saving Spark settings...",
+      syncingSpark: "Syncing Spark settings...",
+      generating: "Generating with Spark...",
       saved: "Saved",
+      sparkSynced: "Spark settings synced from GasGx.",
       copied: "Copied",
-      failed: "Failed"
+      failed: "Failed",
+      sparkReady: "Spark settings are ready.",
+      sparkMissingPrefix: "Missing Spark fields",
+      sparkMissingHint: "Open Spark Settings and save required fields."
     },
     zh: {
       panelTitle: "X Automatic Comment",
@@ -123,8 +133,10 @@
   const state = {
     lang: "en",
     open: false,
+    isPopup: false,
     notice: "",
-    busy: false,
+    pendingAction: "",
+    loadingText: "",
     googleSession: null,
     sparkPublic: null,
     authConfig: null,
@@ -140,6 +152,7 @@
     prompt: "",
     output: ""
   }
+  const SPARK_REQUIRED_FIELDS = ["url", "app_id", "api_key", "api_secret"]
 
   function normalizeLang(value) {
     const raw = String(value || "").toLowerCase()
@@ -149,6 +162,42 @@
 
   function t(key) {
     return (I18N[state.lang] && I18N[state.lang][key]) || I18N.en[key] || key
+  }
+
+  function getSparkMissingFields(publicSettings) {
+    if (Array.isArray(publicSettings?.missingRequiredFields)) {
+      return publicSettings.missingRequiredFields
+        .map((field) => String(field || "").trim())
+        .filter(Boolean)
+    }
+    return SPARK_REQUIRED_FIELDS.filter((field) => !String(publicSettings?.[field] || "").trim())
+  }
+
+  function formatSparkMissingMessage(fields) {
+    if (!Array.isArray(fields) || fields.length === 0) {
+      return t("sparkReady")
+    }
+    return `${t("sparkMissingPrefix")}: ${fields.join(", ")}. ${t("sparkMissingHint")}`
+  }
+
+  function normalizeRuntimeError(error) {
+    const text = String(error || "").trim()
+    if (!text) return "-"
+    if (/Spark settings missing required fields/i.test(text)) {
+      const match = text.match(/Spark settings missing required fields:\s*(.+)$/i)
+      const missing = match?.[1]
+        ? match[1].split(",").map((field) => field.trim()).filter(Boolean)
+        : []
+      return formatSparkMissingMessage(missing)
+    }
+    if (/Spark settings incomplete/i.test(text)) {
+      const match = text.match(/Missing:\s*([a-z_,\s]+)/i)
+      const missing = match?.[1]
+        ? match[1].split(",").map((field) => field.trim()).filter(Boolean)
+        : []
+      return formatSparkMissingMessage(missing)
+    }
+    return text
   }
 
   function escapeHtml(value) {
@@ -161,16 +210,28 @@
   }
 
   function send(action, payload = {}) {
+    const isContextInvalidatedError = (value) => /Extension context invalidated|Receiving end does not exist/i.test(String(value || ""))
     return new Promise((resolve) => {
       try {
         chrome.runtime.sendMessage({ xacAction: action, ...payload }, (response) => {
           if (chrome.runtime.lastError) {
-            resolve({ ok: false, error: chrome.runtime.lastError.message })
+            const err = chrome.runtime.lastError.message
+            if (isContextInvalidatedError(err)) {
+              setNotice("扩展已更新，请关闭并重新打开弹窗。")
+              resolve({ ok: false, error: "Extension context invalidated. Please reopen popup.", code: "CONTEXT_INVALIDATED" })
+              return
+            }
+            resolve({ ok: false, error: err })
             return
           }
           resolve(response || { ok: false, error: "No response" })
         })
       } catch (error) {
+        if (isContextInvalidatedError(error)) {
+          setNotice("扩展已更新，请关闭并重新打开弹窗。")
+          resolve({ ok: false, error: "Extension context invalidated. Please reopen popup.", code: "CONTEXT_INVALIDATED" })
+          return
+        }
         resolve({ ok: false, error: String(error) })
       }
     })
@@ -185,6 +246,24 @@
         state.notice = ""
         render()
       }, 2600)
+    }
+  }
+
+  async function runPending(action, loadingText, task) {
+    if (state.pendingAction) {
+      return null
+    }
+
+    state.pendingAction = action
+    state.loadingText = loadingText || t("busy")
+    render()
+
+    try {
+      return await task()
+    } finally {
+      state.pendingAction = ""
+      state.loadingText = ""
+      render()
     }
   }
 
@@ -285,19 +364,28 @@
     const root = document.getElementById("xac-widget")
     if (!root) return
 
-    root.className = state.open ? "" : "xac-collapsed"
+    root.className = state.open || state.isPopup ? "" : "xac-collapsed"
 
     const isLogged = Boolean(state.googleSession?.accessToken)
+    const isBusy = Boolean(state.pendingAction)
     const loginStatusClass = isLogged ? "xac-status-ok" : "xac-status-bad"
     const loginStatusText = isLogged ? t("loggedIn") : t("loggedOut")
     const email = maskEmail(state.googleSession)
     const supabaseHost = state.authConfig?.supabaseUrl ? new URL(state.authConfig.supabaseUrl).host : "-"
+    const loginLabel = state.pendingAction === "login" ? t("loggingIn") : t("loginGoogle")
+    const logoutLabel = state.pendingAction === "logout" ? t("loggingOut") : t("logout")
+    const saveSparkLabel = state.pendingAction === "save-spark" ? t("savingSpark") : t("saveSpark")
+    const syncSparkLabel = state.pendingAction === "sync-spark" ? t("syncingSpark") : t("syncSpark")
+    const generateLabel = state.pendingAction === "generate" ? t("generating") : t("generate")
+    const sparkMissingFields = getSparkMissingFields(state.sparkPublic)
+    const sparkReady = sparkMissingFields.length === 0
+    const sparkStatusText = formatSparkMissingMessage(sparkMissingFields)
 
     root.innerHTML = `
       <div class="xac-shell">
         <button class="xac-toggle" id="xac-toggle" type="button">
           <span>${escapeHtml(t("panelTitle"))}</span>
-          <span>${state.open ? escapeHtml(t("toggleClose")) : escapeHtml(t("toggleOpen"))}</span>
+          <span>${state.isPopup ? "" : (state.open ? escapeHtml(t("toggleClose")) : escapeHtml(t("toggleOpen")))}</span>
         </button>
         <div class="xac-panel">
           <div class="xac-meta">${escapeHtml(t("panelSubTitle"))}</div>
@@ -305,8 +393,8 @@
           <div class="xac-row">
             <span class="xac-label">${escapeHtml(t("language"))}</span>
             <div class="xac-pill-group">
-              <button type="button" class="xac-pill ${state.lang === "en" ? "active" : ""}" data-lang="en">EN</button>
-              <button type="button" class="xac-pill ${state.lang === "zh" ? "active" : ""}" data-lang="zh">中文</button>
+              <button type="button" class="xac-pill ${state.lang === "en" ? "active" : ""}" data-lang="en" ${isBusy ? "disabled" : ""}>EN</button>
+              <button type="button" class="xac-pill ${state.lang === "zh" ? "active" : ""}" data-lang="zh" ${isBusy ? "disabled" : ""}>中文</button>
             </div>
           </div>
 
@@ -316,16 +404,17 @@
           <div class="xac-meta">${escapeHtml(email)}</div>
 
           <div class="xac-actions">
-            <button type="button" class="xac-button primary" id="xac-login">${escapeHtml(t("loginGoogle"))}</button>
-            <button type="button" class="xac-button danger" id="xac-logout">${escapeHtml(t("logout"))}</button>
+            <button type="button" class="xac-button primary" id="xac-login" ${isBusy ? "disabled" : ""}>${escapeHtml(loginLabel)}</button>
+            <button type="button" class="xac-button danger" id="xac-logout" ${isBusy ? "disabled" : ""}>${escapeHtml(logoutLabel)}</button>
           </div>
 
           <div class="xac-note">${escapeHtml(t("supabase"))}: ${escapeHtml(supabaseHost)}</div>
           <div class="xac-note">${escapeHtml(t("loginRequired"))}</div>
 
-          <details>
+          <details id="xac-spark-details" ${sparkReady ? "" : "open"}>
             <summary>${escapeHtml(t("sparkSection"))}</summary>
             <div class="xac-panel" style="padding: 10px 0 0; gap: 8px;">
+              <div class="xac-note" style="color:${sparkReady ? "#9df3bd" : "#ffb9a6"}">${escapeHtml(sparkStatusText)}</div>
               <input class="xac-input" id="xac-spark-url" value="${escapeHtml(state.sparkDraft.url)}" placeholder="${escapeHtml(t("sparkUrl"))}" />
               <div class="xac-grid-2">
                 <input class="xac-input" id="xac-spark-app-id" value="" placeholder="${escapeHtml(t("sparkAppId"))}" />
@@ -339,7 +428,10 @@
                 <input class="xac-input" id="xac-spark-temp" value="${escapeHtml(String(state.sparkDraft.temperature))}" placeholder="${escapeHtml(t("sparkTemp"))}" />
                 <input class="xac-input" id="xac-spark-max-tokens" value="${escapeHtml(String(state.sparkDraft.max_tokens))}" placeholder="${escapeHtml(t("sparkTokens"))}" />
               </div>
-              <button type="button" class="xac-button" id="xac-save-spark">${escapeHtml(t("saveSpark"))}</button>
+              <div class="xac-grid-2">
+                <button type="button" class="xac-button" id="xac-save-spark" ${isBusy ? "disabled" : ""}>${escapeHtml(saveSparkLabel)}</button>
+                <button type="button" class="xac-button" id="xac-sync-spark" ${isBusy ? "disabled" : ""}>${escapeHtml(syncSparkLabel)}</button>
+              </div>
               <div class="xac-note">${escapeHtml(t("saveSparkTip"))}</div>
               <div class="xac-note">${escapeHtml(t("sparkHint"))}</div>
             </div>
@@ -347,13 +439,15 @@
 
           <div class="xac-label">${escapeHtml(t("promptLabel"))}</div>
           <textarea class="xac-textarea" id="xac-prompt" placeholder="${escapeHtml(t("promptPlaceholder"))}">${escapeHtml(state.prompt)}</textarea>
-          <button type="button" class="xac-button primary" id="xac-generate">${escapeHtml(state.busy ? t("busy") : t("generate"))}</button>
+          ${sparkReady ? "" : `<div class="xac-note" style="color:#ffb9a6">${escapeHtml(sparkStatusText)}</div>`}
+          <button type="button" class="xac-button primary" id="xac-generate" ${isBusy ? "disabled" : ""}>${escapeHtml(generateLabel)}</button>
 
           <div class="xac-label">${escapeHtml(t("output"))}</div>
           <textarea class="xac-textarea" id="xac-output" placeholder="${escapeHtml(t("outputPlaceholder"))}" readonly>${escapeHtml(state.output)}</textarea>
-          <button type="button" class="xac-button" id="xac-copy">${escapeHtml(t("copyOutput"))}</button>
+          <button type="button" class="xac-button" id="xac-copy" ${isBusy ? "disabled" : ""}>${escapeHtml(t("copyOutput"))}</button>
 
           <div class="xac-footer">${escapeHtml(t("footer"))}</div>
+          ${state.loadingText ? `<div class="xac-note">${escapeHtml(state.loadingText)}</div>` : ""}
           ${state.notice ? `<div class="xac-note">${escapeHtml(state.notice)}</div>` : ""}
         </div>
       </div>
@@ -368,12 +462,14 @@
     const loginBtn = document.getElementById("xac-login")
     const logoutBtn = document.getElementById("xac-logout")
     const saveSparkBtn = document.getElementById("xac-save-spark")
+    const syncSparkBtn = document.getElementById("xac-sync-spark")
     const generateBtn = document.getElementById("xac-generate")
     const copyBtn = document.getElementById("xac-copy")
     const promptBox = document.getElementById("xac-prompt")
 
     if (toggle) {
       toggle.onclick = () => {
+        if (state.isPopup) return
         state.open = !state.open
         render()
       }
@@ -381,10 +477,11 @@
 
     document.querySelectorAll("#xac-widget [data-lang]").forEach((btn) => {
       btn.onclick = async () => {
-        const lang = normalizeLang(btn.getAttribute("data-lang"))
-        state.lang = lang
-        await send("xac:set-language", { language: lang })
-        render()
+        await runPending("lang", t("busy"), async () => {
+          const lang = normalizeLang(btn.getAttribute("data-lang"))
+          state.lang = lang
+          await send("xac:set-language", { language: lang })
+        })
       }
     })
 
@@ -396,10 +493,8 @@
 
     if (loginBtn) {
       loginBtn.onclick = async () => {
-        state.busy = true
-        render()
-        const result = await send("xac:google-sign-in")
-        state.busy = false
+        const result = await runPending("login", t("loggingIn"), async () => send("xac:google-sign-in"))
+        if (!result) return
         if (result.ok) {
           state.googleSession = result.googleSession || null
           setNotice(t("loggedIn"))
@@ -411,10 +506,8 @@
 
     if (logoutBtn) {
       logoutBtn.onclick = async () => {
-        state.busy = true
-        render()
-        const result = await send("xac:google-sign-out")
-        state.busy = false
+        const result = await runPending("logout", t("loggingOut"), async () => send("xac:google-sign-out"))
+        if (!result) return
         if (result.ok) {
           state.googleSession = null
           setNotice(t("loggedOut"))
@@ -436,13 +529,28 @@
           max_tokens: document.getElementById("xac-spark-max-tokens")?.value || ""
         }
 
-        const result = await send("xac:set-spark-settings", { settings: payload })
+        const result = await runPending("save-spark", t("savingSpark"), async () => send("xac:set-spark-settings", { settings: payload }))
+        if (!result) return
         if (result.ok) {
           state.sparkPublic = result.sparkSettings || state.sparkPublic
           setSparkDraftFromPublic(state.sparkPublic)
           setNotice(t("saved"))
         } else {
-          setNotice(`${t("failed")}: ${result.error || "-"}`)
+          setNotice(`${t("failed")}: ${normalizeRuntimeError(result.error)}`)
+        }
+      }
+    }
+
+    if (syncSparkBtn) {
+      syncSparkBtn.onclick = async () => {
+        const result = await runPending("sync-spark", t("syncingSpark"), async () => send("xac:sync-spark-settings"))
+        if (!result) return
+        if (result.ok) {
+          state.sparkPublic = result.sparkSettings || state.sparkPublic
+          setSparkDraftFromPublic(state.sparkPublic)
+          setNotice(t("sparkSynced"))
+        } else {
+          setNotice(`${t("failed")}: ${normalizeRuntimeError(result.error)}`)
         }
       }
     }
@@ -453,27 +561,30 @@
         if (!prompt.trim()) {
           return
         }
-
-        state.busy = true
-        render()
-
-        const result = await send("xac:spark-complete", {
+        const missing = getSparkMissingFields(state.sparkPublic)
+        if (missing.length > 0) {
+          const sparkDetails = document.getElementById("xac-spark-details")
+          if (sparkDetails && typeof sparkDetails.open === "boolean") {
+            sparkDetails.open = true
+          }
+          setNotice(formatSparkMissingMessage(missing))
+          return
+        }
+        const result = await runPending("generate", t("generating"), async () => send("xac:spark-complete", {
           prompt,
           systemPrompt:
             state.lang === "zh"
               ? "你是X平台评论助手，请生成自然、简短、可直接发布的中文评论。"
               : "You are an X comment assistant. Generate natural, concise, post-ready English comments.",
           timeoutMs: 30000
-        })
-
-        state.busy = false
+        }))
+        if (!result) return
         if (result.ok) {
           state.output = String(result.text || "")
           setNotice(t("saved"))
         } else {
-          setNotice(`${t("failed")}: ${result.error || "-"}`)
+          setNotice(`${t("failed")}: ${normalizeRuntimeError(result.error)}`)
         }
-        render()
       }
     }
 
@@ -525,11 +636,35 @@
   }
 
   async function init() {
+    const isPopup = /\/popup\.html$/i.test(window.location.pathname || "")
+    state.isPopup = isPopup
+    if (isPopup && document.body) {
+      document.body.classList.add("xac-popup-mode")
+      state.open = true
+    }
+
     applyTheme()
     mount()
     await loadInitialState()
     render()
     installObserver()
+
+    if (state.googleSession?.accessToken && getSparkMissingFields(state.sparkPublic).length > 0) {
+      send("xac:sync-spark-settings").then((result) => {
+        if (!result?.ok) return
+        state.sparkPublic = result.sparkSettings || state.sparkPublic
+        setSparkDraftFromPublic(state.sparkPublic)
+        setNotice(t("sparkSynced"))
+      })
+    }
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return
+      if (Object.prototype.hasOwnProperty.call(changes, "xac.googleSession")) {
+        state.googleSession = changes["xac.googleSession"]?.newValue || null
+        render()
+      }
+    })
   }
 
   if (document.readyState === "loading") {
