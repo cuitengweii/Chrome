@@ -70,6 +70,11 @@
               <button id="selectAllVisible" class="secondary-button" type="button" data-i18n="options.selectAllVisible"></button>
               <button id="clearSelection" class="secondary-button" type="button" data-i18n="options.clearSelection"></button>
             </div>
+            <div class="picker-actions">
+              <button id="addSelectedFavorites" class="secondary-button" type="button" data-i18n="options.addSelectedFavorites"></button>
+              <button id="removeSelectedFavorites" class="secondary-button" type="button" data-i18n="options.removeSelectedFavorites"></button>
+              <span id="favoritesCount" class="picker-count"></span>
+            </div>
             <div id="notebookPicker" class="notebook-picker" role="listbox" aria-multiselectable="true"></div>
             <p class="helper-copy" data-i18n="options.pickerHint"></p>
           </div>
@@ -104,6 +109,11 @@
         <ul id="logList" class="log-list">
           <li class="empty-log" data-i18n="options.logsEmpty"></li>
         </ul>
+        <div class="log-pager">
+          <button id="logPrevPage" class="secondary-button" type="button" data-i18n="options.logsPrev"></button>
+          <span id="logPageInfo"></span>
+          <button id="logNextPage" class="secondary-button" type="button" data-i18n="options.logsNext"></button>
+        </div>
       </article>
 
       <article class="panel wide-panel">

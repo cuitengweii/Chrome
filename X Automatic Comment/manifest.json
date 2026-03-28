@@ -1,0 +1,136 @@
+{
+  "manifest_version": 3,
+  "name": "X Automatic Comment",
+  "version": "11.1.0",
+  "description": "Automatic comment assistant for X/Twitter with bilingual UI, Google login, and Spark AI support.",
+  "author": "GasGx + Xtensions Clone",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "X Automatic Comment",
+    "default_icon": {
+      "16": "icon16.plasmo.6c567d50.png",
+      "32": "icon32.plasmo.76b92899.png",
+      "48": "icon48.plasmo.aced7582.png",
+      "64": "icon64.plasmo.8bb5e6e0.png",
+      "128": "icon128.plasmo.3c1ed2d2.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.plasmo.6c567d50.png",
+    "32": "icon32.plasmo.76b92899.png",
+    "48": "icon48.plasmo.aced7582.png",
+    "64": "icon64.plasmo.8bb5e6e0.png",
+    "128": "icon128.plasmo.3c1ed2d2.png"
+  },
+  "background": {
+    "service_worker": "background-sw.js"
+  },
+  "options_ui": {
+    "open_in_tab": true,
+    "page": "options.html"
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://xtensions.pro/*",
+    "https://*.supabase.co/*",
+    "https://spark-api.xf-yun.com/*",
+    "https://*.xf-yun.com/*",
+    "https://accounts.google.com/*",
+    "*://*.twitter.com/*",
+    "*://*.x.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.twitter.com/*",
+        "*://*.x.com/*"
+      ],
+      "css": [
+        "antd-popups.b1c55314.css"
+      ],
+      "js": [
+        "xui.03f02ae4.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://*.twitter.com/*",
+        "*://*.x.com/*"
+      ],
+      "css": [
+        "antd-popups.b1c55314.css"
+      ],
+      "js": [
+        "antd-popups.9ba8c9e3.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "*://*.twitter.com/*",
+        "*://*.x.com/*"
+      ],
+      "css": [
+        "antd-popups.b1c55314.css"
+      ],
+      "js": [
+        "new-agent.a71531cf.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "options.html",
+        "tabs/pro.html",
+        "tabs/activity.html"
+      ]
+    },
+    {
+      "matches": [
+        "*://*.twitter.com/*",
+        "*://*.x.com/*"
+      ],
+      "resources": [
+        "xui.1579c80d.css",
+        "xui.b3a694a8.png"
+      ]
+    },
+    {
+      "matches": [
+        "*://*.twitter.com/*",
+        "*://*.x.com/*"
+      ],
+      "resources": [
+        "xui.1579c80d.css",
+        "antd-popups.93a5d608.png",
+        "antd-popups.b435b38c.png",
+        "antd-popups.51b4dc1e.png",
+        "antd-popups.febf1f27.png",
+        "tabs/pro.69fabfae.png"
+      ]
+    },
+    {
+      "matches": [
+        "*://*.twitter.com/*",
+        "*://*.x.com/*"
+      ],
+      "resources": [
+        "new-agent.30be45ac.svg",
+        "antd-popups.93a5d608.png",
+        "new-agent.86152fe7.gif",
+        "xui.1579c80d.css"
+      ]
+    }
+  ]
+}

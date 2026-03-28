@@ -8,13 +8,29 @@
     "storage",
     "alarms",
     "tabs",
+    "contextMenus",
+    "activeTab",
     "scripting",
     "notifications",
     "downloads",
     "bookmarks"
   ],
   "host_permissions": [
-    "https://notebooklm.google.com/*"
+    "https://notebooklm.google.com/*",
+    "https://x.com/*",
+    "https://twitter.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "x_context_capture.js"
+      ],
+      "run_at": "document_idle"
+    }
   ],
   "background": {
     "service_worker": "background.js",

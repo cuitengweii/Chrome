@@ -25,8 +25,34 @@ const NOTEBOOK_TAGS_KEY = "notebookTags";
 const AUDIO_TASKS_KEY = "audioOverviewTasks";
 const FOLDERS_KEY = "foldersByType";
 const FOLDER_ASSIGNMENTS_KEY = "folderAssignmentsByType";
+const LOCAL_PROFILE_KEY = "localAssistantProfile";
+const LOCAL_USAGE_KEY = "localAssistantUsage";
+const PROMPTS_KEY = "promptLibrary";
+const SOURCE_META_KEY = "sourceMetadata";
+const CONTEXT_MENU_ROOT_ID = "ctx_add_source_root";
+const CONTEXT_MENU_OPEN_MANAGER_ID = "ctx_add_source_manage";
+const CONTEXT_MENU_EMPTY_ID = "ctx_add_source_empty";
+const CONTEXT_MENU_MORE_ID = "ctx_add_source_more";
+const CONTEXT_MENU_NOTEBOOK_PREFIX = "ctx_add_source_notebook_";
+const CONTEXT_MENU_MAX_FAVORITES = 10;
+const CONTEXT_MENU_CONTEXTS = ["link", "page", "selection"];
+const CONTEXT_MENU_TARGET_PATTERNS = ["*://x.com/*", "*://twitter.com/*"];
+const X_CONTEXT_CACHE_KEY = "xContextStatusByTab";
+const X_CONTEXT_MAX_AGE_MS = 10 * 60 * 1000;
+const X_CONTEXT_MAX_ENTRIES = 120;
 const NOTEBOOK_LIST_CACHE_TTL_MS = 60000;
 const NOTEBOOK_SOURCES_CACHE_TTL_MS = 120000;
+const FEATURE_LIMITS = Object.freeze({
+  import: { basic: 10, pro: Number.POSITIVE_INFINITY },
+  export: { basic: 10, pro: Number.POSITIVE_INFINITY },
+  prompt: { basic: 10, pro: Number.POSITIVE_INFINITY },
+  source_view: { basic: 5, pro: Number.POSITIVE_INFINITY },
+  capture: { basic: 3, pro: Number.POSITIVE_INFINITY },
+  folder: { basic: 5, pro: Number.POSITIVE_INFINITY },
+  merge_notebooks: { basic: 3, pro: Number.POSITIVE_INFINITY },
+  notebook: { basic: 0, pro: Number.POSITIVE_INFINITY }
+});
+const SOURCE_HIGHLIGHT_COLORS = Object.freeze(["none", "green", "blue", "yellow", "orange", "pink", "purple", "red"]);
 const NOTEBOOK_RPC_IDS = Object.freeze({
   LIST_NOTEBOOKS: "wXbhsf",
   CHECK_SOURCE_STATUS: "rLM1Ne",
@@ -47,9 +73,16 @@ let notebookListCache = {
   notebooks: null
 };
 let notebookSourcesCache = new Map();
+const contextMenuNotebookMap = new Map();
+let contextMenuRebuildChain = Promise.resolve();
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function parseIntSafe(value, fallback = 0) {
+  const num = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(num) ? num : fallback;
 }
 
 function minutesSince(isoString) {
@@ -64,6 +97,111 @@ function withTimeout(promise, timeoutMs, errorMessage) {
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error(errorMessage)), timeoutMs))
   ]);
+}
+
+function getFeatureLimit(feature, tier = "basic") {
+  const bucket = FEATURE_LIMITS[String(feature || "").trim()];
+  if (!bucket) return 0;
+  return bucket[String(tier || "basic").trim()] ?? bucket.basic ?? 0;
+}
+
+function normalizeLocalProfile(raw = {}) {
+  const tier = String(raw?.tier || "pro").trim().toLowerCase() === "basic" ? "basic" : "pro";
+  const subscriptionType = tier === "pro"
+    ? (String(raw?.subscriptionType || "lifetime").trim() || "lifetime")
+    : null;
+  return {
+    id: "local-user",
+    name: String(raw?.name || "Konglai AI").trim() || "Konglai AI",
+    email: String(raw?.email || "local@konglai.ai").trim() || "local@konglai.ai",
+    tier,
+    subscriptionType,
+    updatedAt: String(raw?.updatedAt || nowIso()).trim() || nowIso()
+  };
+}
+
+function normalizeLocalUsage(raw = {}) {
+  return {
+    importCount: Math.max(0, parseIntSafe(raw?.importCount, 0)),
+    exportCount: Math.max(0, parseIntSafe(raw?.exportCount, 0)),
+    sourceViewCount: Math.max(0, parseIntSafe(raw?.sourceViewCount, 0)),
+    captureCount: Math.max(0, parseIntSafe(raw?.captureCount, 0)),
+    quickImportCount: Math.max(0, parseIntSafe(raw?.quickImportCount, 0)),
+    updatedAt: String(raw?.updatedAt || nowIso()).trim() || nowIso()
+  };
+}
+
+async function getLocalProfile() {
+  const data = await chrome.storage.local.get(LOCAL_PROFILE_KEY);
+  const normalized = normalizeLocalProfile(data?.[LOCAL_PROFILE_KEY] || {});
+  await chrome.storage.local.set({ [LOCAL_PROFILE_KEY]: normalized });
+  return normalized;
+}
+
+async function saveLocalProfile(patch = {}) {
+  const current = await getLocalProfile();
+  const next = normalizeLocalProfile({
+    ...current,
+    ...patch,
+    updatedAt: nowIso()
+  });
+  await chrome.storage.local.set({ [LOCAL_PROFILE_KEY]: next });
+  return next;
+}
+
+async function getLocalUsage() {
+  const data = await chrome.storage.local.get(LOCAL_USAGE_KEY);
+  const normalized = normalizeLocalUsage(data?.[LOCAL_USAGE_KEY] || {});
+  await chrome.storage.local.set({ [LOCAL_USAGE_KEY]: normalized });
+  return normalized;
+}
+
+async function saveLocalUsage(patch = {}) {
+  const current = await getLocalUsage();
+  const next = normalizeLocalUsage({
+    ...current,
+    ...patch,
+    updatedAt: nowIso()
+  });
+  await chrome.storage.local.set({ [LOCAL_USAGE_KEY]: next });
+  return next;
+}
+
+async function incrementUsage(feature, amount = 1) {
+  const profile = await getLocalProfile();
+  const usage = await getLocalUsage();
+  const mapping = {
+    import: "importCount",
+    export: "exportCount",
+    source_view: "sourceViewCount",
+    capture: "captureCount",
+    quick_import: "quickImportCount"
+  };
+  const field = mapping[String(feature || "").trim()];
+  if (!field) return { success: true, usage };
+
+  const tier = profile.tier || "pro";
+  const limitFeature = feature === "quick_import" ? "import" : feature;
+  const limit = getFeatureLimit(limitFeature, tier);
+  const currentValue = Number(usage[field] || 0);
+  if (Number.isFinite(limit) && currentValue + amount > limit) {
+    return {
+      success: false,
+      limitReached: true,
+      feature: limitFeature,
+      usage,
+      profile
+    };
+  }
+
+  const next = await saveLocalUsage({
+    [field]: currentValue + amount
+  });
+  return {
+    success: true,
+    usage: next,
+    profile
+  };
 }
 
 async function runWithAuthUsers(task, authUsers = [0, 1, 2, 3, 4]) {
@@ -163,7 +301,7 @@ async function notifyFailure(errorKey, result, message) {
     await chrome.notifications.create("", {
       type: "basic",
       iconUrl: chrome.runtime.getURL(NOTIFICATION_ICON),
-      title: `${t(locale, "common.appName")} · ${localizeResult(locale, result)}`,
+      title: `${t(locale, "common.appName")} 路 ${localizeResult(locale, result)}`,
       message: String(message || (locale.startsWith("zh") ? "请打开扩展查看详情。" : "Open the extension for details.")).slice(0, 240),
       priority: 1
     });
@@ -260,11 +398,26 @@ function notebookDomAutomation(payload) {
   const delay = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
   const normalizeText = (value) => String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
   const sourceNeedle = normalizeText(payload?.sourceLabel);
-  const refreshNeedle = normalizeText(payload?.refreshLabel);
+  const refreshNeedles = [
+    payload?.refreshLabel,
+    "点击即可与 Google 云端硬盘同步",
+    "与 google 云端硬盘同步",
+    "google 云端硬盘同步",
+    "云端硬盘同步",
+    "sync with google drive",
+    "sync to google drive",
+    "google drive sync",
+    "google drive",
+    "drive sync",
+    "sync"
+  ]
+    .map((item) => normalizeText(item))
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index);
 
   const ACCESS_TOKENS = [
     "sign in", "choose an account", "request access", "you need access", "you need permission", "login",
-    "??", "????", "??????", "????", "???????"
+    "登录", "选择账号", "请求访问", "需要访问权限", "没有权限", "需要权限"
   ].map((item) => normalizeText(item));
 
   function isVisible(element) {
@@ -291,16 +444,106 @@ function notebookDomAutomation(payload) {
 
   function findClickableAncestor(node) {
     let current = node instanceof Element ? node : node?.parentElement || null;
-    while (current && current !== document.body) {
+    while (current) {
       const tag = current.tagName?.toLowerCase();
       const role = current.getAttribute?.("role");
       const ariaDisabled = current.getAttribute?.("aria-disabled");
       const hasTabIndex = current.hasAttribute?.("tabindex");
-      const isClickable = tag === "button" || tag === "a" || role === "button" || typeof current.onclick === "function" || hasTabIndex;
+      const cursor = normalizeText(window.getComputedStyle(current).cursor);
+      const isClickable = (
+        tag === "button"
+        || tag === "a"
+        || role === "button"
+        || role === "menuitem"
+        || role === "option"
+        || role === "tab"
+        || typeof current.onclick === "function"
+        || hasTabIndex
+        || cursor === "pointer"
+      );
       if (isClickable && ariaDisabled !== "true" && isVisible(current)) return current;
-      current = current.parentElement;
+      const root = current.getRootNode?.();
+      current = current.parentElement || (root instanceof ShadowRoot ? root.host : null);
     }
     return null;
+  }
+
+  function getDeepElements(scope = document.body) {
+    const start = scope || document.body;
+    const stack = [start];
+    const seen = new Set();
+    const out = [];
+
+    while (stack.length) {
+      const current = stack.pop();
+      if (!current || seen.has(current)) continue;
+      seen.add(current);
+
+      if (current instanceof Element) out.push(current);
+
+      if (current instanceof Element && current.shadowRoot) {
+        stack.push(current.shadowRoot);
+      }
+
+      const children = Array.from(current.children || []);
+      for (let index = children.length - 1; index >= 0; index -= 1) {
+        stack.push(children[index]);
+      }
+    }
+
+    return out;
+  }
+
+  function getTextFingerprint(value) {
+    return normalizeText(value).replace(/[\s\-_/|]+/g, "");
+  }
+
+  function sourceTokens(needle) {
+    return normalizeText(needle).split(" ").filter(Boolean);
+  }
+
+  function scoreSourceMatch(candidate, needle) {
+    const text = normalizeText(candidate);
+    if (!text || !needle) return 0;
+
+    const compactText = getTextFingerprint(text);
+    const compactNeedle = getTextFingerprint(needle);
+    if (compactText && compactText === compactNeedle) return 10;
+    if (text === needle) return 9;
+    if (text.startsWith(`${needle} `) || text.endsWith(` ${needle}`)) return 8;
+    if (text.includes(needle)) return text.length <= needle.length + 32 ? 7 : 5;
+
+    const tokens = sourceTokens(needle);
+    if (!tokens.length) return 0;
+    const matched = tokens.filter((token) => text.includes(token));
+    if (!matched.length) return 0;
+    if (matched.length === tokens.length) {
+      return text.length <= needle.length + 40 ? 6 : 4;
+    }
+    return 1 + matched.length;
+  }
+
+  function getPreferredSourceContainer(element) {
+    let current = element instanceof Element ? element : null;
+    let best = null;
+
+    for (let depth = 0; depth < 6 && current; depth += 1) {
+      if (isVisible(current)) {
+        const rect = current.getBoundingClientRect();
+        if (
+          rect.width >= 140
+          && rect.height >= 20
+          && rect.height <= 180
+          && rect.left < (window.innerWidth * 0.68)
+        ) {
+          best = current;
+        }
+      }
+      const root = current.getRootNode?.();
+      current = current.parentElement || (root instanceof ShadowRoot ? root.host : null);
+    }
+
+    return best || element;
   }
 
   function scoreMatch(candidate, needle) {
@@ -310,18 +553,36 @@ function notebookDomAutomation(payload) {
     return 0;
   }
 
-  function makeCandidate(element, strategy, matchedText, baseScore) {
+  function scoreNeedles(candidate, needles) {
+    let best = 0;
+    for (const needle of needles || []) {
+      const score = scoreMatch(candidate, needle);
+      if (score > best) best = score;
+    }
+    return best;
+  }
+
+  function containsAny(text, needles) {
+    return (needles || []).some((needle) => needle && String(text || "").includes(needle));
+  }
+
+  function makeCandidate(element, strategy, matchedText, baseScore, context = {}) {
     const clickable = findClickableAncestor(element) || (isVisible(element) ? element : null);
     if (!clickable) return null;
     const rect = clickable.getBoundingClientRect();
     const centerX = rect.left + (rect.width / 2);
     const leftPaneBonus = centerX < (window.innerWidth * 0.45) ? 0.75 : 0;
+    const anchorRect = context.anchorRect || null;
+    const proximityBonus = anchorRect
+      ? Math.max(0, 1.4 - ((Math.abs(rect.top - anchorRect.top) + Math.abs(rect.left - anchorRect.left)) / 500))
+      : 0;
+    const scopeBonus = context.inPreferredScope ? 1.5 : 0;
     return {
       element: clickable,
       strategy,
       matchedText: matchedText.slice(0, 140),
       tagName: clickable.tagName?.toLowerCase() || "",
-      score: baseScore + leftPaneBonus
+      score: baseScore + leftPaneBonus + proximityBonus + scopeBonus
     };
   }
 
@@ -337,61 +598,192 @@ function notebookDomAutomation(payload) {
 
   function findBestSourceCandidate(needle) {
     const rawCandidates = [];
-    const selector = ["button", "[role='button']", "[aria-label]", "a", "div", "span", "p"].join(", ");
-    for (const element of document.querySelectorAll(selector)) {
+    const elements = getDeepElements(document.body);
+
+    for (const element of elements) {
       if (!isVisible(element)) continue;
+
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0 || rect.left > (window.innerWidth * 0.8)) continue;
+
       const ariaLabel = normalizeText(element.getAttribute?.("aria-label"));
-      const ariaScore = scoreMatch(ariaLabel, needle);
+      const ariaScore = scoreSourceMatch(ariaLabel, needle);
       if (ariaScore > 0) {
-        const c = makeCandidate(element, ariaScore >= 5 ? "aria-exact" : "aria-contains", ariaLabel, ariaScore + 2);
+        const container = getPreferredSourceContainer(element);
+        const c = makeCandidate(container, ariaScore >= 8 ? "aria-exact" : "aria-match", ariaLabel, ariaScore + 3);
         if (c) rawCandidates.push(c);
       }
+
       const title = normalizeText(element.getAttribute?.("title"));
-      const titleScore = scoreMatch(title, needle);
+      const titleScore = scoreSourceMatch(title, needle);
       if (titleScore > 0) {
-        const c = makeCandidate(element, titleScore >= 5 ? "title-exact" : "title-contains", title, titleScore + 1);
+        const container = getPreferredSourceContainer(element);
+        const c = makeCandidate(container, titleScore >= 8 ? "title-exact" : "title-match", title, titleScore + 2);
         if (c) rawCandidates.push(c);
       }
+
       const text = normalizeText(element.textContent);
-      const textScore = scoreMatch(text, needle);
+      const textScore = scoreSourceMatch(text, needle);
       if (textScore > 0) {
-        const c = makeCandidate(element, textScore >= 5 ? "text-exact" : "text-contains", text, textScore);
+        const container = getPreferredSourceContainer(element);
+        const shortTextBonus = text.length <= needle.length + 48 ? 1.5 : 0;
+        const c = makeCandidate(
+          container,
+          textScore >= 8 ? "text-exact" : "text-match",
+          text,
+          textScore + shortTextBonus
+        );
         if (c) rawCandidates.push(c);
       }
     }
+
     return dedupeCandidates(rawCandidates)[0] || null;
+  }
+
+  function collectSourceDiagnostics(needle) {
+    const rows = [];
+    const seen = new Set();
+
+    for (const element of getDeepElements(document.body)) {
+      if (!isVisible(element)) continue;
+      const rect = element.getBoundingClientRect();
+      if (
+        rect.left > (window.innerWidth * 0.72)
+        || rect.width < 120
+        || rect.height < 18
+        || rect.height > 180
+      ) {
+        continue;
+      }
+
+      const text = normalizeText(element.textContent);
+      if (!text || text.length > 140) continue;
+      const score = scoreSourceMatch(text, needle);
+      if (score <= 0 && rows.length >= 4) continue;
+      if (seen.has(text)) continue;
+      seen.add(text);
+      rows.push(text.slice(0, 120));
+      if (rows.length >= 8) break;
+    }
+
+    return rows;
   }
 
   function hasRefreshHint(element) {
     if (!(element instanceof Element)) return false;
+    const text = normalizeText(element.textContent);
     const classText = normalizeText(element.className);
     const ariaLabel = normalizeText(element.getAttribute?.("aria-label"));
     const title = normalizeText(element.getAttribute?.("title"));
     const datasetText = normalizeText(JSON.stringify(element.dataset || {}));
-    const combined = `${classText} ${ariaLabel} ${title} ${datasetText}`;
-    return combined.includes("refresh") || combined.includes("source-refresh") || combined.includes("cloud") || combined.includes("drive") || combined.includes("鍚屾");
+    const combined = [text, classText, ariaLabel, title, datasetText].join(" ");
+    return (
+      combined.includes("refresh")
+      || combined.includes("source-refresh")
+      || combined.includes("cloud")
+      || combined.includes("drive")
+      || combined.includes("google")
+      || combined.includes("同步")
+      || combined.includes("云端硬盘")
+      || containsAny(combined, refreshNeedles)
+    );
   }
 
-  function findRefreshActionCandidate(needle) {
-    const rawCandidates = [];
-    const textNodes = document.querySelectorAll("span,div,p,button,[role='button']");
-    for (const node of textNodes) {
-      if (!isVisible(node)) continue;
-      const nodeText = normalizeText(node.textContent);
-      if (!scoreMatch(nodeText, needle)) continue;
-
-      let current = node;
-      for (let depth = 0; depth < 8 && current && current !== document.body; depth += 1) {
-        if (hasRefreshHint(current) && isVisible(current)) {
-          const c = makeCandidate(current, "refresh-hint", nodeText, 9 - depth);
-          if (c) rawCandidates.push(c);
-        }
-        current = current.parentElement;
+  function findSourceScope(candidate) {
+    const start = candidate?.element;
+    if (!(start instanceof Element)) return null;
+    let current = start;
+    while (current) {
+      const text = normalizeText(current.textContent);
+      if (text.includes(sourceNeedle) && current.getBoundingClientRect().width > 160) {
+        return current;
       }
-      const fallback = makeCandidate(node, "refresh-text", nodeText, 6);
-      if (fallback) rawCandidates.push(fallback);
+      const root = current.getRootNode?.();
+      current = current.parentElement || (root instanceof ShadowRoot ? root.host : null);
+    }
+    return start.parentElement || start;
+  }
+
+  function findRefreshActionCandidate(sourceCandidate) {
+    const rawCandidates = [];
+    const preferredScope = findSourceScope(sourceCandidate);
+    const anchorRect = sourceCandidate?.element?.getBoundingClientRect?.() || null;
+    const preferredScopeRoot = preferredScope?.getRootNode?.();
+    const parentScope = preferredScope?.parentElement || (preferredScopeRoot instanceof ShadowRoot ? preferredScopeRoot.host : null);
+    const scopes = [preferredScope, parentScope, document.body].filter(Boolean);
+    const seenScopes = new Set();
+
+    for (const scope of scopes) {
+      if (!(scope instanceof Element) && scope !== document.body) continue;
+      if (seenScopes.has(scope)) continue;
+      seenScopes.add(scope);
+      const textNodes = getDeepElements(scope);
+      for (const node of textNodes) {
+        if (!isVisible(node)) continue;
+        const nodeText = normalizeText(node.textContent);
+        const ariaLabel = normalizeText(node.getAttribute?.("aria-label"));
+        const title = normalizeText(node.getAttribute?.("title"));
+        const textScore = scoreNeedles(nodeText, refreshNeedles);
+        const ariaScore = scoreNeedles(ariaLabel, refreshNeedles);
+        const titleScore = scoreNeedles(title, refreshNeedles);
+        const matchedScore = Math.max(textScore, ariaScore, titleScore);
+        if (matchedScore <= 0 && !hasRefreshHint(node)) continue;
+
+        let current = node;
+        for (let depth = 0; depth < 8 && current && current !== document.body; depth += 1) {
+          if (hasRefreshHint(current) && isVisible(current)) {
+            const c = makeCandidate(
+              current,
+              matchedScore > 0 ? "refresh-hint-text" : "refresh-hint-only",
+              nodeText || ariaLabel || title,
+              Math.max(7, matchedScore + 4 - depth),
+              { anchorRect, inPreferredScope: scope === preferredScope }
+            );
+            if (c) rawCandidates.push(c);
+          }
+          const root = current.getRootNode?.();
+          current = current.parentElement || (root instanceof ShadowRoot ? root.host : null);
+        }
+
+        if (matchedScore > 0) {
+          const fallback = makeCandidate(
+            node,
+            "refresh-text",
+            nodeText || ariaLabel || title,
+            matchedScore + 4,
+            { anchorRect, inPreferredScope: scope === preferredScope }
+          );
+          if (fallback) rawCandidates.push(fallback);
+        }
+      }
     }
     return dedupeCandidates(rawCandidates)[0] || null;
+  }
+
+  function collectRefreshDiagnostics(sourceCandidate) {
+    const preferredScope = findSourceScope(sourceCandidate) || document.body;
+    const rows = [];
+    const nodes = getDeepElements(preferredScope);
+    for (const node of nodes) {
+      if (!isVisible(node)) continue;
+      const text = normalizeText(node.textContent);
+      const aria = normalizeText(node.getAttribute?.("aria-label"));
+      const title = normalizeText(node.getAttribute?.("title"));
+      const combined = [text, aria, title].filter(Boolean).join(" | ");
+      if (!combined) continue;
+      if (
+        combined.includes("google")
+        || combined.includes("drive")
+        || combined.includes("sync")
+        || combined.includes("同步")
+        || combined.includes("云端硬盘")
+        || hasRefreshHint(node)
+      ) {
+        rows.push(combined.slice(0, 120));
+      }
+      if (rows.length >= 8) break;
+    }
+    return rows;
   }
 
   function clickElement(candidate) {
@@ -399,16 +791,26 @@ function notebookDomAutomation(payload) {
     if (!(element instanceof Element)) return false;
     element.scrollIntoView({ behavior: "instant", block: "center", inline: "center" });
     if (typeof element.focus === "function") element.focus({ preventScroll: true });
-    element.click();
+    const eventTypes = ["pointerdown", "mousedown", "pointerup", "mouseup", "click"];
+    for (const type of eventTypes) {
+      element.dispatchEvent(new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      }));
+    }
+    if (typeof element.click === "function") element.click();
     return true;
   }
 
-  async function waitForCandidate(needle, timeoutMs, missResult, stage) {
+  async function waitForCandidate(needle, timeoutMs, missResult, stage, sourceCandidate = null) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const accessIssue = detectAccessIssue();
       if (accessIssue) return accessIssue;
-      const candidate = stage === "locate_refresh" ? findRefreshActionCandidate(needle) : findBestSourceCandidate(needle);
+      const candidate = stage === "locate_refresh"
+        ? findRefreshActionCandidate(sourceCandidate)
+        : findBestSourceCandidate(needle);
       if (candidate) return { ok: true, candidate };
       await delay(300);
     }
@@ -418,7 +820,11 @@ function notebookDomAutomation(payload) {
       stage,
       message: stage === "locate_source"
         ? `source not found in 15s: ${payload?.sourceLabel || ""}`
-        : `refresh entry not found in 5s: ${payload?.refreshLabel || ""}`
+        : `refresh entry not found in 7s: ${payload?.refreshLabel || refreshNeedles[0] || ""}`
+      ,
+      diagnostics: stage === "locate_refresh"
+        ? collectRefreshDiagnostics(sourceCandidate)
+        : collectSourceDiagnostics(needle)
     };
   }
 
@@ -429,10 +835,16 @@ function notebookDomAutomation(payload) {
 
     const sourceMatch = await waitForCandidate(sourceNeedle, 15000, "source_not_found", "locate_source");
     if (!sourceMatch.ok) return sourceMatch;
-    clickElement(sourceMatch.candidate);
-    await delay(400);
 
-    const refreshMatch = await waitForCandidate(refreshNeedle, 5000, "refresh_not_found", "locate_refresh");
+    clickElement(sourceMatch.candidate);
+    await delay(700);
+
+    let refreshMatch = await waitForCandidate("", 1200, "refresh_not_found", "locate_refresh", sourceMatch.candidate);
+    if (!refreshMatch.ok) {
+      clickElement(sourceMatch.candidate);
+      await delay(900);
+      refreshMatch = await waitForCandidate("", 7000, "refresh_not_found", "locate_refresh", sourceMatch.candidate);
+    }
     if (!refreshMatch.ok) return refreshMatch;
     clickElement(refreshMatch.candidate);
 
@@ -450,7 +862,8 @@ function notebookDomAutomation(payload) {
         strategy: refreshMatch.candidate.strategy,
         text: refreshMatch.candidate.matchedText,
         tagName: refreshMatch.candidate.tagName
-      }
+      },
+      diagnostics: collectRefreshDiagnostics(sourceMatch.candidate)
     };
   })();
 }
@@ -489,7 +902,7 @@ function extractNotebookListDom() {
       const reg = new RegExp(`\\b${token}\\b`, "gi");
       text = text.replace(reg, " ");
     }
-    text = text.replace(/\b\d+\s*涓潵婧怽b/gi, " ");
+    text = text.replace(/\b\d+\s*娑擃亝娼靛┃鎬絙/gi, " ");
     text = text.replace(/\b\d+\s*sources?\b/gi, " ");
     text = text.replace(/\s+/g, " ").trim();
     return text;
@@ -602,19 +1015,25 @@ async function runForTarget(rule, runtime, target) {
   });
 
   if (!automationResult?.ok) {
+    const diagnostics = Array.isArray(automationResult?.diagnostics) && automationResult.diagnostics.length
+      ? ` | candidates=${automationResult.diagnostics.join(" || ")}`
+      : "";
     return {
       ok: false,
       targetUrl: normalizedUrl,
       result: automationResult?.result || "page_error",
-      message: automationResult?.message || "NotebookLM page automation failed."
+      message: (automationResult?.message || "NotebookLM page automation failed.") + diagnostics
     };
   }
 
+  const successDiagnostics = Array.isArray(automationResult?.diagnostics) && automationResult.diagnostics.length
+    ? ` | candidates=${automationResult.diagnostics.slice(0, 3).join(" || ")}`
+    : "";
   return {
     ok: true,
     targetUrl: normalizedUrl,
     result: "success",
-    message: automationResult.message || "Refresh action clicked."
+    message: (automationResult.message || "Refresh action clicked.") + successDiagnostics
   };
 }
 
@@ -1113,6 +1532,7 @@ async function downloadSelectedSources({
     filename: `${filenameBase}-sources.${exportData.fileExt}`,
     saveAs: true
   });
+  await incrementUsage("export", 1).catch(() => undefined);
   setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
   return {
     snapshot: await buildStateSnapshot(),
@@ -1499,6 +1919,7 @@ async function getSourceContentForPreview({
     const rows = await client.getSourceContent(source.id, notebookSources.notebookId);
     return Array.isArray(rows) ? rows : [];
   });
+  await incrementUsage("source_view", 1).catch(() => undefined);
   const textBlocks = blocks.slice(0, 1200).map((item) => String(item || "").trim()).filter(Boolean);
   const joined = textBlocks.join("\n\n");
   const normalizedFormat = String(format || "md").toLowerCase();
@@ -2053,6 +2474,279 @@ function normalizeNotebookUrlList(values = []) {
   return out;
 }
 
+function trimToLength(value, maxLength = 72) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function buildFallbackNotebookTitle(notebookUrl) {
+  const notebookId = extractNotebookIdFromUrl(notebookUrl);
+  if (notebookId) return `Notebook ${notebookId.slice(0, 8)}`;
+  return trimToLength(notebookUrl, 48) || "Notebook";
+}
+
+function isXOrTwitterHost(hostname = "") {
+  const host = String(hostname || "").toLowerCase();
+  return host === "x.com"
+    || host === "www.x.com"
+    || host === "twitter.com"
+    || host === "www.twitter.com"
+    || host === "mobile.twitter.com";
+}
+
+function extractXStatusId(pathname = "") {
+  const path = String(pathname || "");
+  const direct = path.match(/^\/[^/]+\/status\/(\d+)/i);
+  if (direct?.[1]) return direct[1];
+  const web = path.match(/^\/i\/web\/status\/(\d+)/i);
+  if (web?.[1]) return web[1];
+  return "";
+}
+
+function isXStatusUrl(rawUrl = "") {
+  try {
+    const parsed = new URL(String(rawUrl || ""));
+    if (!isXOrTwitterHost(parsed.hostname)) return false;
+    return Boolean(extractXStatusId(parsed.pathname));
+  } catch (_) {
+    return false;
+  }
+}
+
+function normalizeContextSourceUrl(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!/^https?:\/\//i.test(value)) return "";
+  try {
+    const parsed = new URL(value);
+    parsed.hash = "";
+    if (isXOrTwitterHost(parsed.hostname)) {
+      const statusId = extractXStatusId(parsed.pathname);
+      if (!statusId) return "";
+      return `https://x.com/i/web/status/${statusId}`;
+    }
+    return parsed.toString();
+  } catch (_) {
+    return "";
+  }
+}
+
+function pickContextSourceUrl(info = {}, tab = null) {
+  const selectedText = String(info?.selectionText || "").trim();
+  const selectedUrl = /^https?:\/\//i.test(selectedText) ? selectedText : "";
+  const candidates = [
+    info?.linkUrl || "",
+    info?.srcUrl || "",
+    selectedUrl,
+    tab?.url || "",
+    info?.pageUrl || "",
+    info?.frameUrl || ""
+  ];
+
+  for (const raw of candidates) {
+    const normalized = normalizeContextSourceUrl(raw);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function buildContextSourceName(info = {}, tab = null, sourceUrl = "") {
+  const selection = trimToLength(info?.selectionText || "", 90);
+  if (selection && !/^https?:\/\//i.test(selection)) return selection;
+  if (isXStatusUrl(sourceUrl)) return trimToLength(sourceUrl, 90);
+  const title = trimToLength(tab?.title || "", 90);
+  if (title) return title;
+  return trimToLength(sourceUrl, 90) || "Imported Source";
+}
+
+function normalizeXContextCacheMap(rawMap = {}) {
+  const now = Date.now();
+  const rows = [];
+  Object.entries(rawMap || {}).forEach(([tabIdKey, raw]) => {
+    const tabId = Number.parseInt(String(tabIdKey || ""), 10);
+    if (!Number.isInteger(tabId) || tabId < 0) return;
+    const statusUrl = normalizeContextSourceUrl(raw?.statusUrl || "");
+    if (!statusUrl || !isXStatusUrl(statusUrl)) return;
+    const updatedTs = Date.parse(String(raw?.updatedAt || ""));
+    const updatedAt = Number.isFinite(updatedTs) ? updatedTs : now;
+    rows.push([String(tabId), { statusUrl, updatedAt: new Date(updatedAt).toISOString() }]);
+  });
+  rows.sort((a, b) => Date.parse(String(b?.[1]?.updatedAt || "")) - Date.parse(String(a?.[1]?.updatedAt || "")));
+  return Object.fromEntries(rows.slice(0, X_CONTEXT_MAX_ENTRIES));
+}
+
+async function getXContextCacheMap() {
+  const data = await chrome.storage.local.get(X_CONTEXT_CACHE_KEY);
+  return normalizeXContextCacheMap(data?.[X_CONTEXT_CACHE_KEY] || {});
+}
+
+async function setLastXContextStatusUrl(tabId, statusUrl) {
+  const id = Number.parseInt(String(tabId || ""), 10);
+  const normalizedUrl = normalizeContextSourceUrl(statusUrl);
+  if (!Number.isInteger(id) || id < 0 || !normalizedUrl || !isXStatusUrl(normalizedUrl)) return;
+  const map = await getXContextCacheMap();
+  map[String(id)] = {
+    statusUrl: normalizedUrl,
+    updatedAt: nowIso()
+  };
+  await chrome.storage.local.set({ [X_CONTEXT_CACHE_KEY]: normalizeXContextCacheMap(map) });
+}
+
+async function removeXContextByTabId(tabId) {
+  const id = Number.parseInt(String(tabId || ""), 10);
+  if (!Number.isInteger(id) || id < 0) return;
+  const map = await getXContextCacheMap();
+  if (!Object.prototype.hasOwnProperty.call(map, String(id))) return;
+  delete map[String(id)];
+  await chrome.storage.local.set({ [X_CONTEXT_CACHE_KEY]: map });
+}
+
+async function getLastXContextStatusUrl(tabId) {
+  const id = Number.parseInt(String(tabId || ""), 10);
+  if (!Number.isInteger(id) || id < 0) return "";
+  const map = await getXContextCacheMap();
+  const row = map[String(id)];
+  if (!row) return "";
+  const updatedTs = Date.parse(String(row.updatedAt || ""));
+  if (!Number.isFinite(updatedTs) || (Date.now() - updatedTs) > X_CONTEXT_MAX_AGE_MS) return "";
+  return normalizeContextSourceUrl(row.statusUrl || "");
+}
+
+async function getUiLocaleSafe() {
+  try {
+    return await getLocale();
+  } catch (_) {
+    return "en";
+  }
+}
+
+function isZhLocale(locale) {
+  return String(locale || "").toLowerCase().startsWith("zh");
+}
+
+async function notifyContextImport(success, notebookTitle, sourceName, errorMessage = "") {
+  const locale = await getUiLocaleSafe();
+  const zh = isZhLocale(locale);
+  const title = success
+    ? (zh ? "来源导入成功" : "Source Imported")
+    : (zh ? "来源导入失败" : "Source Import Failed");
+  const detail = success
+    ? (zh
+      ? `${trimToLength(sourceName, 42)} -> ${trimToLength(notebookTitle, 32)}`
+      : `${trimToLength(sourceName, 42)} -> ${trimToLength(notebookTitle, 32)}`)
+    : (errorMessage || (zh ? "未知错误" : "Unknown error"));
+  try {
+    await chrome.notifications.create("", {
+      type: "basic",
+      iconUrl: chrome.runtime.getURL(NOTIFICATION_ICON),
+      title,
+      message: trimToLength(detail, 220),
+      priority: 1
+    });
+  } catch (_) {
+    // noop
+  }
+}
+
+async function buildFavoriteNotebookTitles(favoriteUrls = []) {
+  const titleMap = new Map();
+  if (!favoriteUrls.length) return titleMap;
+
+  try {
+    const payload = await fetchNotebookList({ force: false });
+    for (const notebook of (payload.notebooks || [])) {
+      const normalizedUrl = normalizeNotebookUrl(notebook?.url, "");
+      if (!normalizedUrl) continue;
+      titleMap.set(normalizedUrl, trimToLength(notebook?.title || "", 64) || buildFallbackNotebookTitle(normalizedUrl));
+    }
+  } catch (_) {
+    // Keep fallback titles when notebook list fetch fails.
+  }
+
+  for (const url of favoriteUrls) {
+    if (!titleMap.has(url)) {
+      titleMap.set(url, buildFallbackNotebookTitle(url));
+    }
+  }
+  return titleMap;
+}
+
+function contextNotebookMenuId(index) {
+  return `${CONTEXT_MENU_NOTEBOOK_PREFIX}${index}`;
+}
+
+async function rebuildContextMenus() {
+  if (!chrome.contextMenus?.create) return;
+  contextMenuNotebookMap.clear();
+  const locale = await getUiLocaleSafe();
+  const zh = isZhLocale(locale);
+
+  await chrome.contextMenus.removeAll().catch(() => undefined);
+
+  chrome.contextMenus.create({
+    id: CONTEXT_MENU_ROOT_ID,
+    title: "X to NotebookLM",
+    contexts: CONTEXT_MENU_CONTEXTS,
+    documentUrlPatterns: CONTEXT_MENU_TARGET_PATTERNS
+  });
+
+  chrome.contextMenus.create({
+    id: CONTEXT_MENU_OPEN_MANAGER_ID,
+    parentId: CONTEXT_MENU_ROOT_ID,
+    title: zh ? "管理常用笔记本..." : "Manage Favorite Notebooks...",
+    contexts: CONTEXT_MENU_CONTEXTS,
+    documentUrlPatterns: CONTEXT_MENU_TARGET_PATTERNS
+  });
+
+  const favorites = await getFavorites();
+  if (!favorites.length) {
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_EMPTY_ID,
+      parentId: CONTEXT_MENU_ROOT_ID,
+      title: zh ? "暂无常用笔记本（去管理台设置）" : "No favorites yet (set in Manager)",
+      enabled: false,
+      contexts: CONTEXT_MENU_CONTEXTS,
+      documentUrlPatterns: CONTEXT_MENU_TARGET_PATTERNS
+    });
+    return;
+  }
+
+  const titles = await buildFavoriteNotebookTitles(favorites);
+  favorites.slice(0, CONTEXT_MENU_MAX_FAVORITES).forEach((notebookUrl, index) => {
+    const menuId = contextNotebookMenuId(index);
+    const notebookTitle = titles.get(notebookUrl) || buildFallbackNotebookTitle(notebookUrl);
+    contextMenuNotebookMap.set(menuId, notebookUrl);
+    chrome.contextMenus.create({
+      id: menuId,
+      parentId: CONTEXT_MENU_ROOT_ID,
+      title: `${index + 1}. ${trimToLength(notebookTitle, 58)}`,
+      contexts: CONTEXT_MENU_CONTEXTS,
+      documentUrlPatterns: CONTEXT_MENU_TARGET_PATTERNS
+    });
+  });
+
+  if (favorites.length > CONTEXT_MENU_MAX_FAVORITES) {
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_MORE_ID,
+      parentId: CONTEXT_MENU_ROOT_ID,
+      title: zh
+        ? `仅显示前 ${CONTEXT_MENU_MAX_FAVORITES} 个常用笔记本`
+        : `Showing first ${CONTEXT_MENU_MAX_FAVORITES} favorites only`,
+      enabled: false,
+      contexts: CONTEXT_MENU_CONTEXTS,
+      documentUrlPatterns: CONTEXT_MENU_TARGET_PATTERNS
+    });
+  }
+}
+
+function queueContextMenusRebuild() {
+  const task = contextMenuRebuildChain
+    .catch(() => undefined)
+    .then(() => rebuildContextMenus());
+  contextMenuRebuildChain = task.then(() => undefined, () => undefined);
+  return task;
+}
+
 function makeEntityId(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -2157,6 +2851,7 @@ async function getFavorites() {
 async function setFavorites(nextFavorites) {
   const normalized = normalizeNotebookUrlList(nextFavorites);
   await chrome.storage.local.set({ [FAVORITES_KEY]: normalized });
+  await queueContextMenusRebuild().catch(() => undefined);
   return normalized;
 }
 
@@ -2322,20 +3017,237 @@ async function applyTemplateToNotebooks({ templateId, notebookUrls }) {
 }
 
 async function getManagerMeta() {
-  const [favorites, collections, templates, notebookTags, audioTasks] = await Promise.all([
+  const [favorites, collections, templates, notebookTags, audioTasks, sourceMeta, localUser] = await Promise.all([
     getFavorites(),
     getCollections(),
     getTemplates(),
     getNotebookTagsMap(),
-    getAudioTaskMap()
+    getAudioTaskMap(),
+    getSourceMetaMap(),
+    getLocalUserStatus()
   ]);
   return {
     favorites,
     collections,
     templates,
     notebookTags,
-    audioTasks
+    audioTasks,
+    sourceMeta,
+    localUser
   };
+}
+
+function normalizePrompt(raw = {}) {
+  return {
+    id: String(raw?.id || makeEntityId("prompt")).trim(),
+    title: String(raw?.title || "").trim().slice(0, 120) || "Untitled Prompt",
+    content: String(raw?.content || "").trim().slice(0, 12000),
+    folderId: String(raw?.folderId || "all").trim() || "all",
+    tags: normalizeTagList(Array.isArray(raw?.tags) ? raw.tags : String(raw?.tags || "").split(/[,\n]/)),
+    favorite: Boolean(raw?.favorite),
+    createdAt: String(raw?.createdAt || nowIso()).trim() || nowIso(),
+    updatedAt: nowIso()
+  };
+}
+
+async function getPrompts() {
+  const data = await chrome.storage.local.get(PROMPTS_KEY);
+  const list = Array.isArray(data?.[PROMPTS_KEY]) ? data[PROMPTS_KEY] : [];
+  return list
+    .map((item) => normalizePrompt(item))
+    .filter((item) => item.content)
+    .slice(0, 500);
+}
+
+async function savePrompt(payload = {}) {
+  const normalized = normalizePrompt(payload);
+  const current = await getPrompts();
+  const index = current.findIndex((item) => item.id === normalized.id);
+  const next = [...current];
+  if (index >= 0) {
+    next[index] = {
+      ...next[index],
+      ...normalized,
+      createdAt: next[index].createdAt || normalized.createdAt
+    };
+  } else {
+    next.unshift(normalized);
+  }
+  await chrome.storage.local.set({ [PROMPTS_KEY]: next.slice(0, 500) });
+  return getPrompts();
+}
+
+async function deletePrompt(id) {
+  const key = String(id || "").trim();
+  const current = await getPrompts();
+  const next = current.filter((item) => item.id !== key);
+  await chrome.storage.local.set({ [PROMPTS_KEY]: next });
+  return next;
+}
+
+function makeSourceMetaKey(payload = {}) {
+  const notebookId = String(payload?.notebookId || extractNotebookIdFromUrl(payload?.notebookUrl || "") || "").trim();
+  const notebookUrl = normalizeNotebookUrl(payload?.notebookUrl || "", "");
+  const sourceId = String(payload?.sourceId || "").trim();
+  const sourceUrl = String(payload?.sourceUrl || "").trim();
+  const left = notebookId || notebookUrl;
+  const right = sourceId || sourceUrl;
+  return left && right ? `${left}::${right}` : "";
+}
+
+function normalizeSourceMeta(raw = {}) {
+  const highlight = SOURCE_HIGHLIGHT_COLORS.includes(String(raw?.highlight || "").trim())
+    ? String(raw.highlight).trim()
+    : "none";
+  return {
+    note: String(raw?.note || "").trim().slice(0, 1500),
+    highlight,
+    updatedAt: String(raw?.updatedAt || nowIso()).trim() || nowIso()
+  };
+}
+
+async function getSourceMetaMap() {
+  const data = await chrome.storage.local.get(SOURCE_META_KEY);
+  const input = data?.[SOURCE_META_KEY] || {};
+  const out = {};
+  Object.entries(input).forEach(([key, value]) => {
+    const meta = normalizeSourceMeta(value || {});
+    if (!meta.note && meta.highlight === "none") return;
+    out[String(key || "").trim()] = meta;
+  });
+  return out;
+}
+
+async function setSourceMeta(payload = {}) {
+  const key = makeSourceMetaKey(payload);
+  if (!key) throw new Error("invalid_source_meta_key");
+  const current = await getSourceMetaMap();
+  const nextMeta = normalizeSourceMeta(payload);
+  if (!nextMeta.note && nextMeta.highlight === "none") {
+    delete current[key];
+  } else {
+    current[key] = nextMeta;
+  }
+  await chrome.storage.local.set({ [SOURCE_META_KEY]: current });
+  return current;
+}
+
+async function getLocalUserStatus() {
+  const [profile, usage, prompts] = await Promise.all([
+    getLocalProfile(),
+    getLocalUsage(),
+    getPrompts()
+  ]);
+  const tier = profile.tier || "pro";
+  const exportLimit = getFeatureLimit("export", tier);
+  return {
+    success: true,
+    user: {
+      email: profile.email,
+      uid: profile.id,
+      tier,
+      subscription_type: profile.subscriptionType,
+      import_count: usage.importCount,
+      import_limit: getFeatureLimit("import", tier),
+      export_count: usage.exportCount,
+      export_limit: exportLimit,
+      remaining: Number.isFinite(exportLimit) ? Math.max(0, exportLimit - usage.exportCount) : "UNLIMITED",
+      prompt_holder_count: prompts.length,
+      source_view_count: usage.sourceViewCount,
+      capture_count: usage.captureCount,
+      social_import_count: usage.quickImportCount,
+      prepaid_credits: 0
+    }
+  };
+}
+
+async function importCurrentPageToNotebook({ notebookUrl = "", pageUrl = "", pageTitle = "" } = {}) {
+  const url = String(pageUrl || "").trim();
+  if (!/^https?:\/\//i.test(url)) throw new Error("invalid_page_url");
+  const usageResult = await incrementUsage("import", 1);
+  if (!usageResult.success) throw new Error("import_limit_reached");
+  return addSourcesToNotebook({
+    targetNotebookUrl: notebookUrl,
+    sources: [{
+      sourceUrl: url,
+      sourceName: String(pageTitle || "").trim() || url
+    }]
+  });
+}
+
+async function quickImportCurrentPage({ pageUrl = "", pageTitle = "" } = {}) {
+  const url = String(pageUrl || "").trim();
+  if (!/^https?:\/\//i.test(url)) throw new Error("invalid_page_url");
+  const importResult = await incrementUsage("quick_import", 1);
+  if (!importResult.success) throw new Error("import_limit_reached");
+  const prettyTitle = String(pageTitle || "").trim().slice(0, 80) || "Quick Import";
+  return createNotebookFromSources({
+    title: prettyTitle,
+    sources: [{
+      sourceUrl: url,
+      sourceName: prettyTitle
+    }]
+  });
+}
+
+async function captureCurrentTab({ windowId = null, title = "" } = {}) {
+  const usageResult = await incrementUsage("capture", 1);
+  if (!usageResult.success) throw new Error("capture_limit_reached");
+
+  const dataUrl = await new Promise((resolve, reject) => {
+    chrome.tabs.captureVisibleTab(windowId == null ? undefined : windowId, { format: "png" }, (url) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message || "capture_failed"));
+        return;
+      }
+      if (!url) {
+        reject(new Error("capture_failed"));
+        return;
+      }
+      resolve(url);
+    });
+  });
+
+  await chrome.downloads.download({
+    url: dataUrl,
+    filename: `${sanitizeFileName(title || "page-capture")}-${Date.now()}.png`,
+    saveAs: true
+  });
+
+  return {
+    success: true,
+    snapshot: await buildStateSnapshot(),
+    format: "png"
+  };
+}
+
+async function signOutLocalUser() {
+  await chrome.storage.local.set({
+    [LOCAL_PROFILE_KEY]: normalizeLocalProfile({
+      name: "Konglai Guest",
+      email: "guest@konglai.ai",
+      tier: "basic",
+      subscriptionType: null
+    })
+  });
+  return getLocalUserStatus();
+}
+
+async function deleteLocalUserWorkspace() {
+  await chrome.storage.local.remove([
+    LOCAL_USAGE_KEY,
+    PROMPTS_KEY,
+    SOURCE_META_KEY
+  ]);
+  await chrome.storage.local.set({
+    [LOCAL_PROFILE_KEY]: normalizeLocalProfile({
+      name: "Konglai Guest",
+      email: "guest@konglai.ai",
+      tier: "basic",
+      subscriptionType: null
+    })
+  });
+  return getLocalUserStatus();
 }
 
 async function getBrowserTabUrls() {
@@ -2790,15 +3702,63 @@ async function deletePodcastFeed(id) {
   return getPodcastFeeds();
 }
 
+async function handleContextMenuClick(info, tab) {
+  const menuId = String(info?.menuItemId || "");
+  if (!menuId) return;
+
+  if (menuId === CONTEXT_MENU_OPEN_MANAGER_ID) {
+    await openManagerPage();
+    return;
+  }
+
+  const notebookUrl = contextMenuNotebookMap.get(menuId);
+  if (!notebookUrl) return;
+
+  let sourceUrl = pickContextSourceUrl(info, tab);
+  if (!sourceUrl && Number.isInteger(tab?.id)) {
+    sourceUrl = await getLastXContextStatusUrl(tab.id);
+  }
+  if (!sourceUrl) {
+    const locale = await getUiLocaleSafe();
+    const isXTab = isXOrTwitterHost(new URL(String(tab?.url || "https://x.com")).hostname);
+    await notifyContextImport(
+      false,
+      buildFallbackNotebookTitle(notebookUrl),
+      "",
+      isZhLocale(locale)
+        ? (isXTab ? "未识别到帖子链接。请在帖子时间戳或帖子正文链接上右键。" : "未从当前右键上下文提取到可导入链接。")
+        : (isXTab ? "No post status URL detected. Right-click the post timestamp or post link." : "No URL found from current context.")
+    );
+    return;
+  }
+
+  const notebookTitleMap = await buildFavoriteNotebookTitles([notebookUrl]);
+  const notebookTitle = notebookTitleMap.get(notebookUrl) || buildFallbackNotebookTitle(notebookUrl);
+  const sourceName = buildContextSourceName(info, tab, sourceUrl);
+
+  try {
+    await importCurrentPageToNotebook({
+      notebookUrl,
+      pageUrl: sourceUrl,
+      pageTitle: sourceName
+    });
+    await notifyContextImport(true, notebookTitle, sourceName);
+  } catch (error) {
+    await notifyContextImport(false, notebookTitle, sourceName, error?.message || "import_failed");
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   ensureInitialized()
     .then((state) => syncAlarm(state.rule))
+    .then(() => queueContextMenusRebuild())
     .catch((error) => console.error(`${LOG_PREFIX} onInstalled failed`, error));
 });
 
 chrome.runtime.onStartup.addListener(() => {
   ensureInitialized()
     .then((state) => syncAlarm(state.rule))
+    .then(() => queueContextMenusRebuild())
     .catch((error) => console.error(`${LOG_PREFIX} onStartup failed`, error));
 });
 
@@ -2817,9 +3777,76 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     }
     return state;
   }).catch((error) => console.warn(`${LOG_PREFIX} failed to clear tab runtime state`, error));
+  removeXContextByTabId(tabId).catch(() => undefined);
 });
 
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  handleContextMenuClick(info, tab).catch((error) => {
+    console.warn(`${LOG_PREFIX} context menu import failed`, error);
+  });
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes[FAVORITES_KEY]) {
+    queueContextMenusRebuild().catch((error) => console.warn(`${LOG_PREFIX} context menu refresh failed`, error));
+  }
+});
+
+queueContextMenusRebuild().catch((error) => console.warn(`${LOG_PREFIX} context menu init failed`, error));
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "SET_LAST_X_STATUS_URL") {
+    const tabId = _sender?.tab?.id;
+    setLastXContextStatusUrl(tabId, message?.statusUrl || "")
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "set_last_x_status_url_failed" }));
+    return true;
+  }
+
+  if (message?.type === "GET_USER_STATUS") {
+    getLocalUserStatus()
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => sendResponse({ ok: false, success: false, error: error?.message || "get_user_status_failed" }));
+    return true;
+  }
+
+  if (message?.type === "SET_LOCAL_TIER") {
+    saveLocalProfile({
+      tier: String(message?.tier || "pro").trim().toLowerCase() === "basic" ? "basic" : "pro",
+      subscriptionType: String(message?.tier || "pro").trim().toLowerCase() === "basic" ? null : "lifetime"
+    })
+      .then(() => getLocalUserStatus())
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => sendResponse({ ok: false, success: false, error: error?.message || "set_local_tier_failed" }));
+    return true;
+  }
+
+  if (message?.type === "LOCAL_SIGN_OUT") {
+    signOutLocalUser()
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => sendResponse({ ok: false, success: false, error: error?.message || "local_sign_out_failed" }));
+    return true;
+  }
+
+  if (message?.type === "LOCAL_DELETE_ACCOUNT") {
+    deleteLocalUserWorkspace()
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => sendResponse({ ok: false, success: false, error: error?.message || "local_delete_account_failed" }));
+    return true;
+  }
+
+  if (message?.type === "GET_FEATURE_LIMITS") {
+    getLocalProfile()
+      .then((profile) => sendResponse({
+        ok: true,
+        tier: profile.tier,
+        limits: FEATURE_LIMITS
+      }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "get_feature_limits_failed" }));
+    return true;
+  }
+
   if (message?.type === "GET_STATE") {
     buildStateSnapshot()
       .then((snapshot) => sendResponse({ ok: true, snapshot }))
@@ -3098,6 +4125,75 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "GET_PROMPTS") {
+    Promise.all([
+      getPrompts(),
+      getFoldersByType("prompts")
+    ])
+      .then(([prompts, folders]) => sendResponse({ ok: true, prompts, folders: folders.folders || [], assignments: folders.assignments || {} }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "get_prompts_failed" }));
+    return true;
+  }
+
+  if (message?.type === "SAVE_PROMPT") {
+    savePrompt(message?.payload || {})
+      .then((prompts) => sendResponse({ ok: true, prompts }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "save_prompt_failed" }));
+    return true;
+  }
+
+  if (message?.type === "DELETE_PROMPT") {
+    deletePrompt(message?.id || "")
+      .then((prompts) => sendResponse({ ok: true, prompts }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "delete_prompt_failed" }));
+    return true;
+  }
+
+  if (message?.type === "GET_SOURCE_META") {
+    getSourceMetaMap()
+      .then((sourceMeta) => sendResponse({ ok: true, sourceMeta }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "get_source_meta_failed" }));
+    return true;
+  }
+
+  if (message?.type === "SET_SOURCE_META") {
+    setSourceMeta(message?.payload || {})
+      .then((sourceMeta) => sendResponse({ ok: true, sourceMeta }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "set_source_meta_failed" }));
+    return true;
+  }
+
+  if (message?.type === "IMPORT_CURRENT_PAGE") {
+    importCurrentPageToNotebook({
+      notebookUrl: message?.notebookUrl || "",
+      pageUrl: message?.pageUrl || "",
+      pageTitle: message?.pageTitle || ""
+    })
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "import_current_page_failed" }));
+    return true;
+  }
+
+  if (message?.type === "QUICK_IMPORT_CURRENT_PAGE") {
+    quickImportCurrentPage({
+      pageUrl: message?.pageUrl || "",
+      pageTitle: message?.pageTitle || ""
+    })
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "quick_import_current_page_failed" }));
+    return true;
+  }
+
+  if (message?.type === "CAPTURE_CURRENT_PAGE") {
+    captureCurrentTab({
+      windowId: message?.windowId ?? null,
+      title: message?.title || ""
+    })
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "capture_current_page_failed" }));
+    return true;
+  }
+
   if (message?.type === "GET_FOLDERS") {
     const data = message?.data || message || {};
     getFoldersByType(data?.folderType || "sources")
@@ -3132,6 +4228,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     })
       .then((favorites) => sendResponse({ ok: true, favorites }))
       .catch((error) => sendResponse({ ok: false, error: error?.message || "set_favorites_failed" }));
+    return true;
+  }
+
+  if (message?.type === "GET_FAVORITES") {
+    getFavorites()
+      .then((favorites) => sendResponse({ ok: true, favorites }))
+      .catch((error) => sendResponse({ ok: false, error: error?.message || "get_favorites_failed" }));
     return true;
   }
 
@@ -3185,6 +4288,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return false;
 });
+
 
 
 

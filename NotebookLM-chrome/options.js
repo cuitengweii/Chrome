@@ -12,6 +12,8 @@ import {
   localizeMode
 } from "./i18n.js";
 
+const FAVORITES_STORAGE_KEY = "favoriteNotebooks";
+
 const saveRuleButton = document.getElementById("saveRule");
 const runNowButton = document.getElementById("runNow");
 const openNotebookButton = document.getElementById("openNotebook");
@@ -21,6 +23,9 @@ const appendSourcesForSelectedButton = document.getElementById("appendSourcesFor
 const addRuleRowButton = document.getElementById("addRuleRow");
 const selectAllVisibleButton = document.getElementById("selectAllVisible");
 const clearSelectionButton = document.getElementById("clearSelection");
+const addSelectedFavoritesButton = document.getElementById("addSelectedFavorites");
+const removeSelectedFavoritesButton = document.getElementById("removeSelectedFavorites");
+const favoritesCount = document.getElementById("favoritesCount");
 const localeSelect = document.getElementById("localeSelect");
 
 const enabledInput = document.getElementById("enabled");
@@ -39,6 +44,9 @@ const runtimeNextRun = document.getElementById("runtimeNextRun");
 const runtimeMessage = document.getElementById("runtimeMessage");
 
 const logList = document.getElementById("logList");
+const logPrevPageButton = document.getElementById("logPrevPage");
+const logNextPageButton = document.getElementById("logNextPage");
+const logPageInfo = document.getElementById("logPageInfo");
 const formStatus = document.getElementById("formStatus");
 const buildInfo = document.getElementById("buildInfo");
 const formInputs = [enabledInput, intervalMinutesInput, refreshLabelInput];
@@ -49,7 +57,11 @@ let notebookCache = [];
 let ruleRowsState = [];
 let notebookSelectedUrls = new Set();
 let notebookSearchKeyword = "";
+let favorites = new Set();
 let lastSnapshot = null;
+let logPage = 1;
+let logFingerprint = "";
+const LOGS_PER_PAGE = 8;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -62,6 +74,19 @@ function escapeHtml(value) {
 
 function setStatus(message) {
   formStatus.textContent = String(message || "");
+}
+
+function beginButtonLoading(button, label = `${t(locale, "common.loading")}...`) {
+  const previousDisabled = button.disabled;
+  const previousText = button.textContent;
+  button.disabled = true;
+  button.classList.add("is-loading");
+  button.textContent = label;
+  return () => {
+    button.classList.remove("is-loading");
+    button.textContent = previousText;
+    button.disabled = previousDisabled;
+  };
 }
 
 function formatTime(isoString) {
@@ -175,19 +200,39 @@ function renderRule(rule, { force = false } = {}) {
   isDirty = false;
 }
 
-function renderLogs(runtime) {
-  if (!runtime.recentRuns.length) {
+function renderLogs(runtime, { forceFirstPage = false } = {}) {
+  const entries = Array.isArray(runtime?.recentRuns) ? runtime.recentRuns : [];
+  const fingerprint = entries.length ? `${entries[0]?.at || ""}|${entries.length}` : "0";
+  if (forceFirstPage || fingerprint !== logFingerprint) logPage = 1;
+  logFingerprint = fingerprint;
+
+  const totalCount = entries.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / LOGS_PER_PAGE));
+  if (logPage > totalPages) logPage = totalPages;
+  if (logPage < 1) logPage = 1;
+
+  if (!totalCount) {
     logList.innerHTML = `<li class="empty-log">${escapeHtml(t(locale, "options.logsEmpty"))}</li>`;
+    logPrevPageButton.disabled = true;
+    logNextPageButton.disabled = true;
+    logPageInfo.textContent = t(locale, "options.logsPageInfo", { page: 1, total: 1, count: 0 });
     return;
   }
 
-  logList.innerHTML = runtime.recentRuns.map((entry) => `
+  const startIndex = (logPage - 1) * LOGS_PER_PAGE;
+  const pageItems = entries.slice(startIndex, startIndex + LOGS_PER_PAGE);
+
+  logList.innerHTML = pageItems.map((entry) => `
     <li class="log-entry">
       <strong>${escapeHtml(localizeMode(locale, entry.mode))} · ${escapeHtml(localizeResult(locale, entry.result))}</strong>
       <span>${escapeHtml(formatTime(entry.at))}</span>
       <span>${escapeHtml(entry.message || "-")}</span>
     </li>
   `).join("");
+
+  logPrevPageButton.disabled = logPage <= 1;
+  logNextPageButton.disabled = logPage >= totalPages;
+  logPageInfo.textContent = t(locale, "options.logsPageInfo", { page: logPage, total: totalPages, count: totalCount });
 }
 
 function renderRuntime(snapshot) {
@@ -216,6 +261,7 @@ function selectedNotebookUrls() {
 
 function updateSelectionCount() {
   pickerSelectionCount.textContent = t(locale, "options.pickerSelected", { count: notebookSelectedUrls.size });
+  favoritesCount.textContent = t(locale, "options.favoritesCount", { count: favorites.size });
 }
 
 function notebookMatchesSearch(item) {
@@ -247,7 +293,7 @@ function drawNotebookPicker() {
     row.innerHTML = `
       <input type="checkbox" ${notebookSelectedUrls.has(item.url) ? "checked" : ""}>
       <span class="notebook-main">
-        <strong class="notebook-title">${escapeHtml(item.title)}</strong>
+        <strong class="notebook-title">${escapeHtml(item.title)}${favorites.has(item.url) ? " ★" : ""}</strong>
         <span class="notebook-url">${escapeHtml(item.url)}</span>
       </span>
     `;
@@ -262,6 +308,13 @@ function drawNotebookPicker() {
     notebookPicker.appendChild(row);
   });
 
+  updateSelectionCount();
+}
+
+async function refreshFavorites() {
+  const response = await chrome.runtime.sendMessage({ type: "GET_FAVORITES" });
+  if (!response?.ok) throw new Error(response?.error || "get_favorites_failed");
+  favorites = new Set(Array.isArray(response.favorites) ? response.favorites : []);
   updateSelectionCount();
 }
 
@@ -337,7 +390,7 @@ async function refreshState(message = t(locale, "common.ready")) {
 }
 
 async function invokeAction(button, message, progressText, doneText) {
-  button.disabled = true;
+  const endLoading = beginButtonLoading(button);
   setStatus(progressText);
 
   try {
@@ -358,7 +411,7 @@ async function invokeAction(button, message, progressText, doneText) {
       renderRule(snapshot.rule);
       renderRuntime(snapshot);
     }
-    button.disabled = false;
+    endLoading();
   }
 }
 
@@ -370,7 +423,7 @@ function refreshStaticText() {
 }
 
 saveRuleButton.addEventListener("click", () => {
-  saveRuleButton.disabled = true;
+  const endLoading = beginButtonLoading(saveRuleButton);
   setStatus(t(locale, "options.statusSaving"));
 
   chrome.runtime.sendMessage({ type: "SAVE_RULE", payload: collectRule() })
@@ -392,7 +445,7 @@ saveRuleButton.addEventListener("click", () => {
         renderRule(snapshot.rule);
         renderRuntime(snapshot);
       }
-      saveRuleButton.disabled = false;
+      endLoading();
     });
 });
 
@@ -411,8 +464,13 @@ openNotebookButton.addEventListener("click", () => {
 });
 
 fetchNotebooksButton.addEventListener("click", async () => {
-  fetchNotebooksButton.disabled = true;
+  const endLoading = beginButtonLoading(fetchNotebooksButton);
+  appendNotebooksButton.disabled = true;
+  appendSourcesForSelectedButton.disabled = true;
+  selectAllVisibleButton.disabled = true;
+  clearSelectionButton.disabled = true;
   setStatus(t(locale, "options.statusFetchNotebooks"));
+  notebookPicker.innerHTML = `<div class="picker-empty picker-loading">${escapeHtml(t(locale, "common.loading"))}...</div>`;
 
   try {
     const response = await chrome.runtime.sendMessage({ type: "FETCH_NOTEBOOKS" });
@@ -422,14 +480,59 @@ fetchNotebooksButton.addEventListener("click", async () => {
     renderRuntime(response.snapshot);
     setStatus(t(locale, "options.statusFetchedNotebooks", { count: response.notebooks?.length || 0 }));
   } catch (error) {
+    drawNotebookPicker();
     setStatus(t(locale, "common.actionFailed", { message: error.message }));
   } finally {
-    fetchNotebooksButton.disabled = false;
+    appendNotebooksButton.disabled = false;
+    appendSourcesForSelectedButton.disabled = false;
+    selectAllVisibleButton.disabled = false;
+    clearSelectionButton.disabled = false;
+    endLoading();
   }
 });
 
 appendNotebooksButton.addEventListener("click", appendSelectedNotebooksToRules);
 appendSourcesForSelectedButton.addEventListener("click", appendExtraSourceRowsForSelected);
+
+addSelectedFavoritesButton.addEventListener("click", async () => {
+  const selected = selectedNotebookUrls();
+  if (!selected.length) {
+    setStatus(t(locale, "options.statusNoSelection"));
+    return;
+  }
+  const endLoading = beginButtonLoading(addSelectedFavoritesButton);
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "SET_FAVORITES", action: "add", urls: selected });
+    if (!response?.ok) throw new Error(response?.error || "set_favorites_failed");
+    favorites = new Set(Array.isArray(response.favorites) ? response.favorites : []);
+    drawNotebookPicker();
+    setStatus(t(locale, "options.statusFavoritesAdded", { count: selected.length }));
+  } catch (error) {
+    setStatus(t(locale, "common.actionFailed", { message: error.message }));
+  } finally {
+    endLoading();
+  }
+});
+
+removeSelectedFavoritesButton.addEventListener("click", async () => {
+  const selected = selectedNotebookUrls();
+  if (!selected.length) {
+    setStatus(t(locale, "options.statusNoSelection"));
+    return;
+  }
+  const endLoading = beginButtonLoading(removeSelectedFavoritesButton);
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "SET_FAVORITES", action: "remove", urls: selected });
+    if (!response?.ok) throw new Error(response?.error || "set_favorites_failed");
+    favorites = new Set(Array.isArray(response.favorites) ? response.favorites : []);
+    drawNotebookPicker();
+    setStatus(t(locale, "options.statusFavoritesRemoved", { count: selected.length }));
+  } catch (error) {
+    setStatus(t(locale, "common.actionFailed", { message: error.message }));
+  } finally {
+    endLoading();
+  }
+});
 
 selectAllVisibleButton.addEventListener("click", () => {
   const visible = notebookCache.filter((item) => notebookMatchesSearch(item));
@@ -440,6 +543,18 @@ selectAllVisibleButton.addEventListener("click", () => {
 clearSelectionButton.addEventListener("click", () => {
   notebookSelectedUrls.clear();
   drawNotebookPicker();
+});
+
+logPrevPageButton.addEventListener("click", () => {
+  if (!lastSnapshot?.runtime) return;
+  logPage -= 1;
+  renderLogs(lastSnapshot.runtime);
+});
+
+logNextPageButton.addEventListener("click", () => {
+  if (!lastSnapshot?.runtime) return;
+  logPage += 1;
+  renderLogs(lastSnapshot.runtime);
 });
 
 notebookSearchInput.addEventListener("input", () => {
@@ -465,6 +580,10 @@ localeSelect.addEventListener("change", async () => {
 
   if (lastSnapshot) {
     renderRuntime(lastSnapshot);
+  } else {
+    logPrevPageButton.disabled = true;
+    logNextPageButton.disabled = true;
+    logPageInfo.textContent = t(locale, "options.logsPageInfo", { page: 1, total: 1, count: 0 });
   }
 
   setStatus(t(locale, "common.ready"));
@@ -483,6 +602,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
     drawNotebookPicker();
     if (lastSnapshot) renderRuntime(lastSnapshot);
     return;
+  }
+
+  if (changes[FAVORITES_STORAGE_KEY]) {
+    const next = Array.isArray(changes[FAVORITES_STORAGE_KEY]?.newValue) ? changes[FAVORITES_STORAGE_KEY].newValue : [];
+    favorites = new Set(next);
+    drawNotebookPicker();
   }
 
   refreshState(t(locale, "options.statusRefreshingState")).catch(() => undefined);
@@ -504,9 +629,15 @@ async function bootstrap() {
 
   renderNotebookPicker([]);
   renderRows([]);
+  favorites = new Set();
+  logPrevPageButton.disabled = true;
+  logNextPageButton.disabled = true;
+  logPageInfo.textContent = t(locale, "options.logsPageInfo", { page: 1, total: 1, count: 0 });
+  updateSelectionCount();
   setStatus(t(locale, "common.ready"));
 
   try {
+    await refreshFavorites().catch(() => undefined);
     await refreshState(t(locale, "common.ready"));
   } catch (error) {
     setStatus(t(locale, "common.loadFailed", { message: error.message }));

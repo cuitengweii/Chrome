@@ -66,9 +66,21 @@ const el = {
   allSourcesPageInfo: document.getElementById("allSourcesPageInfo"),
   allSourcesSelectedCount: document.getElementById("allSourcesSelectedCount"),
   refreshDocumentsButton: document.getElementById("refreshDocuments"),
+  documentsDownloadSelectedButton: document.getElementById("documentsDownloadSelected"),
+  documentsSearchInput: document.getElementById("documentsSearchInput"),
+  documentsTypeFilter: document.getElementById("documentsTypeFilter"),
+  documentsSelectAll: document.getElementById("documentsSelectAll"),
   documentsBody: document.getElementById("documentsBody"),
+  documentsRowsPerPage: document.getElementById("documentsRowsPerPage"),
+  documentsPrevPage: document.getElementById("documentsPrevPage"),
+  documentsNextPage: document.getElementById("documentsNextPage"),
+  documentsPageInfo: document.getElementById("documentsPageInfo"),
+  documentsSelectedCount: document.getElementById("documentsSelectedCount"),
   mergeTitleInput: document.getElementById("mergeTitleInput"),
+  mergeSearchInput: document.getElementById("mergeSearchInput"),
   mergeDeleteOriginal: document.getElementById("mergeDeleteOriginal"),
+  mergeSelectAll: document.getElementById("mergeSelectAll"),
+  mergeSelectedInfo: document.getElementById("mergeSelectedInfo"),
   mergeSelectedNowButton: document.getElementById("mergeSelectedNow"),
   mergeBody: document.getElementById("mergeBody"),
 
@@ -103,6 +115,10 @@ const el = {
   autoNextRun: document.getElementById("autoNextRun"),
   autoMessage: document.getElementById("autoMessage"),
   automationLogList: document.getElementById("automationLogList"),
+  automationLogsPerPage: document.getElementById("automationLogsPerPage"),
+  automationLogPageInfo: document.getElementById("automationLogPageInfo"),
+  automationLogPrevButton: document.getElementById("automationLogPrev"),
+  automationLogNextButton: document.getElementById("automationLogNext"),
 
   addSelectedFavoritesButton: document.getElementById("addSelectedFavorites"),
   removeSelectedFavoritesButton: document.getElementById("removeSelectedFavorites"),
@@ -150,7 +166,7 @@ el.bulkMethodPanels = [...document.querySelectorAll(".method-panel[data-method-p
 
 const state = {
   locale: "zh-CN",
-  theme: "dark",
+  theme: "light",
   notebooks: [],
   filtered: [],
   selected: new Set(),
@@ -169,9 +185,17 @@ const state = {
   allSourcesFolderFilter: "all",
   allSourcesLoading: false,
   allSourcesError: "",
+  podcastFeedsCount: 0,
   sourceFolders: [],
   sourceFolderAssignments: {},
   allDocuments: [],
+  documentsFiltered: [],
+  documentsPaged: [],
+  documentsSearchKey: "",
+  documentsTypeFilter: "",
+  documentsSelected: new Set(),
+  documentsCurrentPage: 1,
+  documentsPageSize: 20,
   sourceDetail: {
     notebookId: "",
     notebookUrl: "",
@@ -180,8 +204,11 @@ const state = {
   },
   sourceSearchKey: "",
   mergeSelected: new Set(),
+  mergeSearchKey: "",
   notebookTags: {},
   audioTasks: {},
+  sourceMeta: {},
+  localUser: null,
   pagedRows: [],
   currentPage: 1,
   pageSize: 20,
@@ -197,6 +224,9 @@ const state = {
     ops: true
   },
   editingTemplateId: "",
+  automationLogPage: 1,
+  automationLogsPerPage: 8,
+  automationLogFingerprint: "",
   downloadContext: {
     notebookId: "",
     notebookUrl: "",
@@ -491,6 +521,23 @@ function renderThemeToggle() {
   el.themeToggle.setAttribute("aria-label", label);
 }
 
+function setNavCount(view, count) {
+  const target = el.navItems.find((node) => node.dataset.view === view);
+  if (!target) return;
+  const value = Number.isFinite(Number(count)) ? Number(count) : 0;
+  target.dataset.count = String(Math.max(0, value));
+}
+
+function renderNavCounts() {
+  const allSourcesCount = state.allSources.length || state.notebooks.reduce((sum, item) => sum + Number(item.sourceCount || 0), 0);
+  setNavCount("notebooks", state.notebooks.length);
+  setNavCount("allSources", allSourcesCount);
+  setNavCount("documents", state.allDocuments.length);
+  setNavCount("collections", state.collections.length);
+  setNavCount("favorites", state.favorites.size);
+  setNavCount("podcast", state.podcastFeedsCount);
+}
+
 async function applyTheme(themeValue, persist = true) {
   state.theme = normalizeTheme(themeValue);
   document.body.dataset.theme = state.theme;
@@ -503,7 +550,7 @@ async function applyTheme(themeValue, persist = true) {
 
 async function loadThemePref() {
   const data = await chrome.storage.local.get(THEME_PREF_KEY);
-  state.theme = normalizeTheme(data?.[THEME_PREF_KEY] || "dark");
+  state.theme = normalizeTheme(data?.[THEME_PREF_KEY] || "light");
   await applyTheme(state.theme, false);
 }
 
@@ -716,6 +763,15 @@ function renderAutomation(snapshotValue) {
     el.autoMessage.textContent = t(state.locale, "manager.statusReading");
     el.automationToggleEnabledButton.textContent = "-";
     el.automationLogList.innerHTML = `<li class="empty">${t(state.locale, "manager.logsEmpty")}</li>`;
+    if (el.automationLogPageInfo) {
+      el.automationLogPageInfo.textContent = t(state.locale, "manager.pageInfo", {
+        page: 1,
+        total: 1,
+        count: 0
+      });
+    }
+    if (el.automationLogPrevButton) el.automationLogPrevButton.disabled = true;
+    if (el.automationLogNextButton) el.automationLogNextButton.disabled = true;
     return;
   }
 
@@ -730,10 +786,29 @@ function renderAutomation(snapshotValue) {
     : (isZh() ? "恢复定时" : "Resume Schedule");
 
   const runs = Array.isArray(runtime.recentRuns) ? runtime.recentRuns : [];
+  const fingerprint = runs.length ? `${runs[0]?.at || ""}|${runs.length}` : "0";
+  if (state.automationLogFingerprint !== fingerprint) {
+    state.automationLogFingerprint = fingerprint;
+    state.automationLogPage = 1;
+  }
+
+  const pageSize = Math.max(1, parseIntSafe(el.automationLogsPerPage?.value || state.automationLogsPerPage, state.automationLogsPerPage));
+  state.automationLogsPerPage = pageSize;
+  if (el.automationLogsPerPage && el.automationLogsPerPage.value !== String(pageSize)) {
+    el.automationLogsPerPage.value = String(pageSize);
+  }
+
+  const totalCount = runs.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  if (state.automationLogPage > totalPages) state.automationLogPage = totalPages;
+  if (state.automationLogPage < 1) state.automationLogPage = 1;
+  const start = (state.automationLogPage - 1) * pageSize;
+  const pageRuns = runs.slice(start, start + pageSize);
+
   if (!runs.length) {
     el.automationLogList.innerHTML = `<li class="empty">${t(state.locale, "manager.logsEmpty")}</li>`;
   } else {
-    el.automationLogList.innerHTML = runs.slice(0, 8).map((entry) => `
+    el.automationLogList.innerHTML = pageRuns.map((entry) => `
       <li class="feed-item">
         <strong>${localizeMode(state.locale, entry.mode)} · ${localizeResult(state.locale, entry.result)}</strong>
         <span>${formatTime(entry.at)}</span>
@@ -741,6 +816,16 @@ function renderAutomation(snapshotValue) {
       </li>
     `).join("");
   }
+
+  if (el.automationLogPageInfo) {
+    el.automationLogPageInfo.textContent = t(state.locale, "manager.pageInfo", {
+      page: state.automationLogPage,
+      total: totalPages,
+      count: totalCount
+    });
+  }
+  if (el.automationLogPrevButton) el.automationLogPrevButton.disabled = state.automationLogPage <= 1;
+  if (el.automationLogNextButton) el.automationLogNextButton.disabled = state.automationLogPage >= totalPages;
 }
 
 function renderStats() {
@@ -819,16 +904,20 @@ function renderTable() {
     sourceTd.style.display = state.columnVisible.sources ? "" : "none";
     const sourceWrap = document.createElement("div");
     sourceWrap.className = "source-cell";
-    const sourceCountBtn = createOpButton(
+    let sourceCountBtn;
+    sourceCountBtn = createOpButton(
       String(Number(item.sourceCount || 0)),
       isZh() ? "查看来源列表" : "Open source list",
-      () => openSourceDetailByNotebook(item),
+      () => withButtonLoading(sourceCountBtn, "…", () => openSourceDetailByNotebook(item)),
       "source-count-link"
     );
-    const sourceDownloadBtn = createOpButton(
+    let sourceDownloadBtn;
+    sourceDownloadBtn = createOpButton(
       "↓",
       isZh() ? "下载来源内容" : "Download sources",
-      () => openDownloadDialogForNotebook(item),
+      () => withButtonLoading(sourceDownloadBtn, "…", async () => {
+        openDownloadDialogForNotebook(item);
+      }),
       "icon-btn"
     );
     sourceWrap.append(sourceCountBtn, sourceDownloadBtn);
@@ -903,10 +992,11 @@ function renderTable() {
     const lastEditedTd = document.createElement("td");
     lastEditedTd.dataset.col = "lastEdited";
     lastEditedTd.style.display = state.columnVisible.lastEdited ? "" : "none";
-    const lastEditedBtn = createOpButton(
+    let lastEditedBtn;
+    lastEditedBtn = createOpButton(
       item.lastEditedAt ? formatTime(item.lastEditedAt) : "-",
       isZh() ? "进入来源管理页" : "Open source manager",
-      () => openSourceDetailByNotebook(item),
+      () => withButtonLoading(lastEditedBtn, "…", () => openSourceDetailByNotebook(item)),
       "source-count-link"
     );
     lastEditedTd.appendChild(lastEditedBtn);
@@ -943,24 +1033,45 @@ function renderTable() {
     opsTd.style.display = state.columnVisible.ops ? "" : "none";
     const ops = document.createElement("div");
     ops.className = "ops";
-
     const isFavorite = state.favorites.has(normalizeNotebookUrl(item.url, ""));
-    ops.appendChild(createOpButton(
+
+    let favoriteBtn;
+    favoriteBtn = createOpButton(
       isFavorite ? "★" : "☆",
       isFavorite ? t(state.locale, "manager.unfavorite") : t(state.locale, "manager.favorite"),
-      () => toggleFavorite(item.url),
+      () => withButtonLoading(favoriteBtn, "…", () => toggleFavorite(item.url)),
       "icon-btn"
-    ));
-    ops.appendChild(createOpButton("↗", t(state.locale, "manager.open"), () => openNotebook(item.url), "icon-btn"));
-    ops.appendChild(createOpButton("R+", t(state.locale, "manager.addRule"), () => addRule(item.url, item.title), "icon-btn"));
-    ops.appendChild(createOpButton("S+", t(state.locale, "manager.addSource"), () => addRuleWithPrompt(item.url), "icon-btn"));
-    ops.appendChild(createOpButton(
-      "≣",
-      isZh() ? "进入来源管理页" : "Open source manager",
-      () => openSourceDetailByNotebook(item),
-      "icon-btn"
-    ));
-    ops.appendChild(createOpButton("⟳", t(state.locale, "manager.runNow"), () => runNotebook(item.url), "icon-btn"));
+    );
+    let openBtn;
+    openBtn = createOpButton(
+      t(state.locale, "manager.open"),
+      t(state.locale, "manager.open"),
+      () => withButtonLoading(openBtn, "…", () => openNotebook(item.url)),
+      "tiny"
+    );
+    let addRuleBtn;
+    addRuleBtn = createOpButton(
+      t(state.locale, "manager.addRule"),
+      t(state.locale, "manager.addRule"),
+      () => withButtonLoading(addRuleBtn, "…", () => addRule(item.url, item.title)),
+      "tiny"
+    );
+    let addSourceBtn;
+    addSourceBtn = createOpButton(
+      t(state.locale, "manager.addSource"),
+      t(state.locale, "manager.addSource"),
+      () => withButtonLoading(addSourceBtn, "…", () => addRuleWithPrompt(item.url)),
+      "tiny"
+    );
+    let runNowBtn;
+    runNowBtn = createOpButton(
+      t(state.locale, "manager.runNow"),
+      t(state.locale, "manager.runNow"),
+      () => withButtonLoading(runNowBtn, "…", () => runNotebook(item.url)),
+      "tiny"
+    );
+
+    ops.append(favoriteBtn, openBtn, addRuleBtn, addSourceBtn, runNowBtn);
 
     opsTd.appendChild(ops);
     tr.append(checkboxTd, titleTd, sourceTd, tagsTd, collectionsTd, lastEditedTd, audioTd, countTd, opsTd);
@@ -999,8 +1110,27 @@ function renderSourceDetail() {
   el.sourceDetailBody.innerHTML = "";
   rows.forEach((source) => {
     const tr = document.createElement("tr");
+    const meta = getSourceMeta({
+      notebookId: detail.notebookId,
+      notebookUrl: detail.notebookUrl,
+      sourceId: source.id,
+      sourceUrl: source.sourceUrl || "",
+      sourceName: source.name || ""
+    });
+    tr.dataset.highlight = meta.highlight || "none";
     const nameTd = document.createElement("td");
-    nameTd.textContent = source.name || "-";
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "source-name-cell";
+    const nameText = document.createElement("div");
+    nameText.textContent = source.name || "-";
+    nameWrap.appendChild(nameText);
+    if (meta.note) {
+      const noteText = document.createElement("div");
+      noteText.className = "source-note-preview";
+      noteText.textContent = meta.note;
+      nameWrap.appendChild(noteText);
+    }
+    nameTd.appendChild(nameWrap);
     const urlTd = document.createElement("td");
     if (source.sourceUrl) {
       const link = document.createElement("a");
@@ -1019,6 +1149,24 @@ function renderSourceDetail() {
     const opsTd = document.createElement("td");
     const ops = document.createElement("div");
     ops.className = "mini-actions";
+    ops.appendChild(createOpButton("✎", isZh() ? "编辑备注" : "Edit note", () => {
+      editSourceNote({
+        notebookId: detail.notebookId,
+        notebookUrl: detail.notebookUrl,
+        sourceId: source.id,
+        sourceUrl: source.sourceUrl || "",
+        sourceName: source.name || ""
+      }).catch(showActionError);
+    }, "icon-btn"));
+    const highlightBtn = createOpButton("●", sourceHighlightLabel(meta.highlight), () => {
+      cycleSourceHighlight({
+        notebookId: detail.notebookId,
+        notebookUrl: detail.notebookUrl,
+        sourceId: source.id,
+        sourceUrl: source.sourceUrl || "",
+        sourceName: source.name || ""
+      }).catch(showActionError);
+    }, `icon-btn source-highlight-btn highlight-${meta.highlight || "none"}`);
     if (source.sourceUrl) {
       ops.appendChild(createOpButton(isZh() ? "打开" : "Open", isZh() ? "打开来源 URL" : "Open source URL", () => chrome.tabs.create({ url: source.sourceUrl, active: true }), "tiny"));
       ops.appendChild(createOpButton(isZh() ? "复制" : "Copy", isZh() ? "复制来源 URL" : "Copy URL", async () => {
@@ -1026,6 +1174,7 @@ function renderSourceDetail() {
         setStatus(isZh() ? "来源 URL 已复制。" : "Source URL copied.");
       }, "tiny"));
     }
+    ops.appendChild(highlightBtn);
     opsTd.appendChild(ops);
     tr.append(nameTd, urlTd, statusTd, updatedTd, opsTd);
     el.sourceDetailBody.appendChild(tr);
@@ -1471,6 +1620,7 @@ function renderAllSources() {
   if (!el.allSourcesBody) return;
   const rows = getAllSourcesFilteredRows();
   state.allSourcesFiltered = rows;
+  renderNavCounts();
 
   renderAllSourcesFolders(rows);
 
@@ -1522,6 +1672,8 @@ function renderAllSources() {
   el.allSourcesBody.innerHTML = "";
   state.allSourcesPaged.forEach((row) => {
     const tr = document.createElement("tr");
+    const meta = getSourceMeta(row);
+    tr.dataset.highlight = meta.highlight || "none";
 
     const checkTd = document.createElement("td");
     const checkbox = document.createElement("input");
@@ -1539,8 +1691,19 @@ function renderAllSources() {
     notebookTd.textContent = `${row.notebookEmoji ? `${row.notebookEmoji} ` : ""}${row.notebookTitle || "-"}`;
 
     const nameTd = document.createElement("td");
-    nameTd.className = "text-ellipsis";
-    nameTd.textContent = row.sourceName || "-";
+    const nameWrap = document.createElement("div");
+    nameWrap.className = "source-name-cell";
+    const nameMain = document.createElement("div");
+    nameMain.className = "text-ellipsis";
+    nameMain.textContent = row.sourceName || "-";
+    nameWrap.appendChild(nameMain);
+    if (meta.note) {
+      const noteNode = document.createElement("div");
+      noteNode.className = "source-note-preview";
+      noteNode.textContent = meta.note;
+      nameWrap.appendChild(noteNode);
+    }
+    nameTd.appendChild(nameWrap);
 
     const urlTd = document.createElement("td");
     urlTd.className = "text-ellipsis";
@@ -1622,6 +1785,12 @@ function renderAllSources() {
       else openSourceDetailByNotebook(row.notebookUrl);
     }, "icon-btn");
     const previewBtn = createOpButton("👁", isZh() ? "预览内容" : "Preview content", () => openSourcePreview(row).catch(showActionError), "icon-btn");
+    const noteBtn = createOpButton("✎", isZh() ? "编辑备注" : "Edit note", () => {
+      editSourceNote(row).catch(showActionError);
+    }, "icon-btn");
+    const highlightBtn = createOpButton("●", sourceHighlightLabel(meta.highlight), () => {
+      cycleSourceHighlight(row).catch(showActionError);
+    }, `icon-btn source-highlight-btn highlight-${meta.highlight || "none"}`);
     const downloadBtn = createOpButton("↓", isZh() ? "下载来源" : "Download source", () => {
       sendMessage({
         type: "DOWNLOAD_SELECTED_SOURCES",
@@ -1636,7 +1805,7 @@ function renderAllSources() {
     const deleteBtn = createOpButton("🗑", isZh() ? "删除来源" : "Delete source", () => {
       handleAllSourcesDelete([row]).catch(showActionError);
     }, "icon-btn");
-    ops.append(openBtn, previewBtn, downloadBtn);
+    ops.append(openBtn, previewBtn, noteBtn, highlightBtn, downloadBtn);
     if (row.isGDoc && row.sourceId) {
       const syncBtn = createOpButton("⟳", isZh() ? "同步 GDocs" : "Sync GDocs", () => {
         handleAllSourcesSyncGdocs([row]).catch(showActionError);
@@ -1655,18 +1824,137 @@ async function refreshDocuments(force = false) {
   const response = await sendMessage({ type: "FETCH_DOCUMENTS", force }, 300000);
   state.snapshot = response.snapshot || state.snapshot;
   state.allDocuments = Array.isArray(response.documents) ? response.documents : [];
+  const validKeys = new Set(state.allDocuments.map((doc) => getDocumentRowKey(doc)));
+  state.documentsSelected = new Set([...state.documentsSelected].filter((key) => validKeys.has(key)));
   renderDocuments();
 }
 
+function getDocumentRowKey(doc) {
+  const notebookId = String(doc?.notebookId || extractNotebookId(doc?.notebookUrl || "") || doc?.notebookUrl || "").trim();
+  const docId = String(doc?.id || "").trim();
+  const fallback = String(doc?.title || doc?.content || "").trim().toLowerCase();
+  return `${notebookId}::${docId || fallback}`;
+}
+
+function getDocumentFilteredRows() {
+  const key = String(state.documentsSearchKey || "").trim().toLowerCase();
+  const typeFilter = String(state.documentsTypeFilter || "").trim().toLowerCase();
+  return (state.allDocuments || []).filter((doc) => {
+    if (typeFilter && String(doc.type || "Note").toLowerCase() !== typeFilter) return false;
+    if (!key) return true;
+    return [
+      doc.notebookTitle,
+      doc.title,
+      doc.type,
+      doc.content
+    ].some((value) => String(value || "").toLowerCase().includes(key));
+  });
+}
+
+function renderDocumentsTypeOptions() {
+  if (!el.documentsTypeFilter) return;
+  const current = String(state.documentsTypeFilter || "");
+  const types = [...new Set((state.allDocuments || []).map((doc) => String(doc.type || "Note").trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "zh-Hans-CN"));
+  el.documentsTypeFilter.innerHTML = [
+    `<option value="">${t(state.locale, "manager.documentsTypeAll")}</option>`,
+    ...types.map((typeValue) => `<option value="${typeValue}">${typeValue}</option>`)
+  ].join("");
+  el.documentsTypeFilter.value = types.includes(current) ? current : "";
+}
+
+function downloadDocumentRow(doc) {
+  const title = String(doc?.title || "Document").trim() || "Document";
+  const notebook = String(doc?.notebookTitle || "").trim();
+  const type = String(doc?.type || "Note").trim();
+  const content = String(doc?.content || "").trim();
+  const normalizedUrl = normalizeNotebookUrl(doc?.notebookUrl || "", "");
+  const payload = [
+    `# ${title}`,
+    "",
+    `Type: ${type || "-"}`,
+    `Notebook: ${notebook || "-"}`,
+    `Notebook URL: ${normalizedUrl || "-"}`,
+    "",
+    content || "-"
+  ].join("\n");
+  const blob = new Blob([payload], { type: "text/markdown;charset=utf-8" });
+  const anchor = document.createElement("a");
+  anchor.href = URL.createObjectURL(blob);
+  anchor.download = `${title.replace(/[\\/:*?"<>|]/g, "_").slice(0, 80) || "document"}.md`;
+  anchor.click();
+  URL.revokeObjectURL(anchor.href);
+}
+
+function downloadSelectedDocuments() {
+  const docMap = new Map((state.allDocuments || []).map((doc) => [getDocumentRowKey(doc), doc]));
+  const selectedRows = [...state.documentsSelected].map((key) => docMap.get(key)).filter(Boolean);
+  if (!selectedRows.length) {
+    setStatus(isZh() ? "请先选择文档。" : "Select documents first.");
+    return;
+  }
+  selectedRows.forEach((doc) => downloadDocumentRow(doc));
+  setStatus(isZh() ? `已导出 ${selectedRows.length} 条文档。` : `Exported ${selectedRows.length} documents.`);
+}
+
 function renderDocuments() {
-  const rows = state.allDocuments || [];
-  if (!rows.length) {
-    el.documentsBody.innerHTML = `<tr><td colspan="5" class="empty">${isZh() ? "暂无文档数据。" : "No document data."}</td></tr>`;
+  renderDocumentsTypeOptions();
+
+  const rows = getDocumentFilteredRows();
+  state.documentsFiltered = rows;
+  const pageSize = Math.max(20, parseIntSafe(el.documentsRowsPerPage?.value || state.documentsPageSize, state.documentsPageSize));
+  state.documentsPageSize = pageSize;
+  if (el.documentsRowsPerPage && el.documentsRowsPerPage.value !== String(pageSize)) {
+    el.documentsRowsPerPage.value = String(pageSize);
+  }
+
+  const total = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (state.documentsCurrentPage > totalPages) state.documentsCurrentPage = totalPages;
+  if (state.documentsCurrentPage < 1) state.documentsCurrentPage = 1;
+  const start = (state.documentsCurrentPage - 1) * pageSize;
+  state.documentsPaged = rows.slice(start, start + pageSize);
+
+  if (el.documentsSelectedCount) {
+    el.documentsSelectedCount.textContent = t(state.locale, "manager.selectedCount", { count: state.documentsSelected.size });
+  }
+  if (el.documentsPageInfo) {
+    el.documentsPageInfo.textContent = t(state.locale, "manager.pageInfo", {
+      page: state.documentsCurrentPage,
+      total: totalPages,
+      count: total
+    });
+  }
+  if (el.documentsPrevPage) el.documentsPrevPage.disabled = state.documentsCurrentPage <= 1;
+  if (el.documentsNextPage) el.documentsNextPage.disabled = state.documentsCurrentPage >= totalPages;
+
+  const pageKeys = state.documentsPaged.map((doc) => getDocumentRowKey(doc));
+  const selectedOnPage = pageKeys.filter((key) => state.documentsSelected.has(key)).length;
+  if (el.documentsSelectAll) {
+    el.documentsSelectAll.checked = pageKeys.length > 0 && selectedOnPage === pageKeys.length;
+    el.documentsSelectAll.indeterminate = selectedOnPage > 0 && selectedOnPage < pageKeys.length;
+  }
+
+  if (!state.documentsPaged.length) {
+    el.documentsBody.innerHTML = `<tr><td colspan="6" class="empty">${isZh() ? "暂无文档数据。" : "No document data."}</td></tr>`;
+    renderNavCounts();
     return;
   }
   el.documentsBody.innerHTML = "";
-  rows.forEach((doc) => {
+  state.documentsPaged.forEach((doc) => {
     const tr = document.createElement("tr");
+    const checkTd = document.createElement("td");
+    const checkbox = document.createElement("input");
+    const rowKey = getDocumentRowKey(doc);
+    checkbox.type = "checkbox";
+    checkbox.checked = state.documentsSelected.has(rowKey);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) state.documentsSelected.add(rowKey);
+      else state.documentsSelected.delete(rowKey);
+      renderDocuments();
+    });
+    checkTd.appendChild(checkbox);
+
     const notebookTd = document.createElement("td");
     notebookTd.textContent = doc.notebookTitle || "-";
     const titleTd = document.createElement("td");
@@ -1684,6 +1972,22 @@ function renderDocuments() {
       () => openNotebook(doc.notebookUrl),
       "tiny"
     ));
+    ops.appendChild(createOpButton(
+      isZh() ? "预览" : "Preview",
+      isZh() ? "预览文档内容" : "Preview document",
+      () => showMessageDialog({
+        title: doc.title || (isZh() ? "文档预览" : "Document Preview"),
+        message: `${doc.notebookTitle || "-"} | ${doc.type || "Note"}`,
+        detail: String(doc.content || "-")
+      }),
+      "tiny"
+    ));
+    ops.appendChild(createOpButton(
+      isZh() ? "下载" : "Download",
+      isZh() ? "下载文档" : "Download document",
+      () => downloadDocumentRow(doc),
+      "tiny"
+    ));
     if (doc.content && /^https?:\/\//i.test(String(doc.content))) {
       ops.appendChild(createOpButton(
         isZh() ? "打开内容" : "Open Content",
@@ -1693,17 +1997,33 @@ function renderDocuments() {
       ));
     }
     opsTd.appendChild(ops);
-    tr.append(notebookTd, titleTd, typeTd, updatedTd, opsTd);
+    tr.append(checkTd, notebookTd, titleTd, typeTd, updatedTd, opsTd);
     el.documentsBody.appendChild(tr);
   });
+  renderNavCounts();
 }
 
 function renderMerge() {
-  const rows = state.notebooks || [];
+  const key = String(state.mergeSearchKey || "").trim().toLowerCase();
+  const rows = (state.notebooks || []).filter((item) => {
+    if (!key) return true;
+    return String(item.title || "").toLowerCase().includes(key)
+      || String(item.url || "").toLowerCase().includes(key);
+  });
   if (!rows.length) {
     el.mergeBody.innerHTML = `<tr><td colspan="3" class="empty">${isZh() ? "暂无 notebook。" : "No notebooks."}</td></tr>`;
+    if (el.mergeSelectedInfo) {
+      el.mergeSelectedInfo.textContent = t(state.locale, "manager.selectedCount", { count: state.mergeSelected.size });
+    }
     return;
   }
+
+  if (el.mergeSelectAll) {
+    const selectedOnPage = rows.filter((item) => state.mergeSelected.has(item.url)).length;
+    el.mergeSelectAll.checked = rows.length > 0 && selectedOnPage === rows.length;
+    el.mergeSelectAll.indeterminate = selectedOnPage > 0 && selectedOnPage < rows.length;
+  }
+
   el.mergeBody.innerHTML = "";
   rows.forEach((item) => {
     const tr = document.createElement("tr");
@@ -1714,6 +2034,7 @@ function renderMerge() {
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) state.mergeSelected.add(item.url);
       else state.mergeSelected.delete(item.url);
+      renderMerge();
     });
     checkTd.appendChild(checkbox);
     const titleTd = document.createElement("td");
@@ -1723,6 +2044,10 @@ function renderMerge() {
     tr.append(checkTd, titleTd, sourceTd);
     el.mergeBody.appendChild(tr);
   });
+
+  if (el.mergeSelectedInfo) {
+    el.mergeSelectedInfo.textContent = t(state.locale, "manager.selectedCount", { count: state.mergeSelected.size });
+  }
 }
 
 async function performMergeSelected() {
@@ -1731,12 +2056,16 @@ async function performMergeSelected() {
     setStatus(isZh() ? "至少选择 2 个 notebook 才能合并。" : "Select at least 2 notebooks to merge.");
     return;
   }
-  const response = await sendMessage({
-    type: "MERGE_NOTEBOOKS",
-    notebookUrls,
-    newTitle: String(el.mergeTitleInput.value || "").trim(),
-    deleteOriginal: Boolean(el.mergeDeleteOriginal.checked)
-  }, 300000);
+  const response = await withGlobalLoading(
+    t(state.locale, "manager.globalLoadingTitle"),
+    isZh() ? "正在合并笔记本..." : "Merging notebooks...",
+    () => sendMessage({
+      type: "MERGE_NOTEBOOKS",
+      notebookUrls,
+      newTitle: String(el.mergeTitleInput.value || "").trim(),
+      deleteOriginal: Boolean(el.mergeDeleteOriginal.checked)
+    }, 300000)
+  );
   state.snapshot = response.snapshot || state.snapshot;
   setStatus(isZh()
     ? `合并完成：${response.result?.notebookTitle || "-"}，导入 ${response.result?.importedSourceCount || 0} 个来源。`
@@ -1896,6 +2225,7 @@ function renderFavorites() {
   const urls = [...state.favorites];
   if (!urls.length) {
     el.favoritesList.innerHTML = `<li class="empty">${t(state.locale, "manager.favoritesEmpty")}</li>`;
+    renderNavCounts();
     return;
   }
   el.favoritesList.innerHTML = urls.map((url) => `
@@ -1913,11 +2243,13 @@ function renderFavorites() {
   el.favoritesList.querySelectorAll("button[data-open]").forEach((btn) => btn.addEventListener("click", () => openNotebook(btn.dataset.open || "")));
   el.favoritesList.querySelectorAll("button[data-run]").forEach((btn) => btn.addEventListener("click", () => runNotebook(btn.dataset.run || "")));
   el.favoritesList.querySelectorAll("button[data-unfav]").forEach((btn) => btn.addEventListener("click", () => toggleFavorite(btn.dataset.unfav || "")));
+  renderNavCounts();
 }
 
 function renderCollections() {
   if (!state.collections.length) {
     el.collectionsList.innerHTML = `<li class="empty">${t(state.locale, "manager.collectionsEmpty")}</li>`;
+    renderNavCounts();
     return;
   }
   el.collectionsList.innerHTML = state.collections.map((collection) => `
@@ -1937,6 +2269,7 @@ function renderCollections() {
       </div>
     </li>
   `).join("");
+  renderNavCounts();
 }
 
 function renderTemplates() {
@@ -2132,8 +2465,10 @@ function bindCollectionAndTemplateActions() {
 }
 
 function renderPodcastFeeds(feeds) {
+  state.podcastFeedsCount = Array.isArray(feeds) ? feeds.length : 0;
   if (!feeds.length) {
     el.podcastFeedList.innerHTML = `<li class="empty">${t(state.locale, "manager.podcastEmpty")}</li>`;
+    renderNavCounts();
     return;
   }
 
@@ -2181,6 +2516,7 @@ function renderPodcastFeeds(feeds) {
       setStatus(t(state.locale, "manager.statusDeleteFeed"));
     });
   });
+  renderNavCounts();
 }
 
 async function sendMessage(message, timeoutMs = REQUEST_TIMEOUT_MS) {
@@ -2209,7 +2545,9 @@ async function loadNotebooks(force = false) {
 
 async function loadFeeds() {
   const response = await sendMessage({ type: "GET_PODCAST_FEEDS" }, 90000);
-  renderPodcastFeeds(response.feeds || []);
+  const feeds = Array.isArray(response.feeds) ? response.feeds : [];
+  state.podcastFeedsCount = feeds.length;
+  renderPodcastFeeds(feeds);
 }
 
 async function loadManagerMeta() {
@@ -2219,6 +2557,76 @@ async function loadManagerMeta() {
   state.templates = Array.isArray(response.templates) ? response.templates : [];
   state.notebookTags = response.notebookTags || {};
   state.audioTasks = response.audioTasks || {};
+  state.sourceMeta = response.sourceMeta || {};
+  state.localUser = response.localUser?.user || null;
+}
+
+function getSourceMetaKey(row = {}) {
+  const notebookId = String(row?.notebookId || extractNotebookId(row?.notebookUrl || "") || "").trim();
+  const notebookUrl = normalizeNotebookUrl(row?.notebookUrl || "", "");
+  const sourceId = String(row?.sourceId || row?.id || "").trim();
+  const sourceUrl = String(row?.sourceUrl || "").trim();
+  const left = notebookId || notebookUrl;
+  const right = sourceId || sourceUrl;
+  return left && right ? `${left}::${right}` : "";
+}
+
+function getSourceMeta(row = {}) {
+  const key = getSourceMetaKey(row);
+  return state.sourceMeta?.[key] || { note: "", highlight: "none" };
+}
+
+function nextSourceHighlight(current = "none") {
+  const order = ["none", "green", "blue", "yellow", "orange", "pink", "purple", "red"];
+  const index = order.indexOf(String(current || "none"));
+  return order[(index + 1 + order.length) % order.length];
+}
+
+function sourceHighlightLabel(color = "none") {
+  const value = String(color || "none");
+  if (value === "none") return isZh() ? "无高亮" : "No Highlight";
+  return isZh() ? `高亮：${value}` : `Highlight: ${value}`;
+}
+
+async function saveSourceMetaForRow(row, patch = {}) {
+  const current = getSourceMeta(row);
+  const response = await sendMessage({
+    type: "SET_SOURCE_META",
+    payload: {
+      notebookId: row?.notebookId || "",
+      notebookUrl: row?.notebookUrl || "",
+      sourceId: row?.sourceId || row?.id || "",
+      sourceUrl: row?.sourceUrl || "",
+      note: Object.prototype.hasOwnProperty.call(patch, "note") ? patch.note : current.note,
+      highlight: Object.prototype.hasOwnProperty.call(patch, "highlight") ? patch.highlight : current.highlight
+    }
+  }, 90000);
+  state.sourceMeta = response.sourceMeta || state.sourceMeta;
+}
+
+async function editSourceNote(row) {
+  const current = getSourceMeta(row);
+  const next = await askTextDialog({
+    title: isZh() ? "编辑来源备注" : "Edit Source Note",
+    message: row?.sourceName || row?.name || "-",
+    label: isZh() ? "备注内容" : "Note",
+    defaultValue: current.note || "",
+    placeholder: isZh() ? "输入这条来源的备注..." : "Add a note for this source..."
+  });
+  if (next === null) return;
+  await saveSourceMetaForRow(row, { note: String(next || "").trim() });
+  renderSourceDetail();
+  renderAllSources();
+  setStatus(isZh() ? "来源备注已更新。" : "Source note updated.");
+}
+
+async function cycleSourceHighlight(row) {
+  const current = getSourceMeta(row);
+  const next = nextSourceHighlight(current.highlight);
+  await saveSourceMetaForRow(row, { highlight: next });
+  renderSourceDetail();
+  renderAllSources();
+  setStatus(sourceHighlightLabel(next));
 }
 
 async function refreshAll(force = false) {
@@ -2239,6 +2647,7 @@ async function refreshAll(force = false) {
   renderTemplates();
   bindCollectionAndTemplateActions();
   renderStats();
+  renderNavCounts();
   startAudioPolling();
   setStatus(t(state.locale, "manager.statusReadDone", { count: state.notebooks.length }));
 }
@@ -2284,8 +2693,16 @@ async function openNotebook(url) {
   setStatus(t(state.locale, "manager.statusNotebookOpened"));
 }
 
-async function runNotebook(url) {
-  const response = await sendMessage({ type: "RUN_NOTEBOOK_NOW", url });
+async function runNotebook(url, options = {}) {
+  const useGlobalLoading = options.globalLoading !== false;
+  const execute = () => sendMessage({ type: "RUN_NOTEBOOK_NOW", url });
+  const response = useGlobalLoading
+    ? await withGlobalLoading(
+      t(state.locale, "manager.globalLoadingTitle"),
+      isZh() ? "正在执行来源刷新..." : "Running source refresh...",
+      execute
+    )
+    : await execute();
   state.snapshot = response.snapshot;
   renderTable();
   renderAutomation(state.snapshot);
@@ -2514,9 +2931,15 @@ async function batchAddSource() {
 async function batchRunNow() {
   const urls = selectedUrls();
   if (!urls.length) return setStatus(t(state.locale, "manager.statusNoSelection"));
-  for (const url of urls) {
-    await runNotebook(url);
-  }
+  await withGlobalLoading(
+    t(state.locale, "manager.globalLoadingTitle"),
+    isZh() ? "正在批量执行刷新..." : "Running batch refresh...",
+    async () => {
+      for (const url of urls) {
+        await runNotebook(url, { globalLoading: false });
+      }
+    }
+  );
   setStatus(t(state.locale, "manager.statusBatchRun", { count: urls.length }));
 }
 
@@ -2593,7 +3016,11 @@ async function batchImportToNotebook() {
   const urls = getImportUrls();
   if (!notebookUrl) return setStatus(isZh() ? "请先选择目标 notebook。" : "Select target notebook first.");
   if (!urls.length) return setStatus(isZh() ? "请先准备待导入 URL。" : "Prepare URLs to import first.");
-  const response = await sendMessage({ type: "BATCH_IMPORT_SOURCES", notebookUrl, urls }, 240000);
+  const response = await withGlobalLoading(
+    t(state.locale, "manager.globalLoadingTitle"),
+    isZh() ? "正在导入来源..." : "Importing sources...",
+    () => sendMessage({ type: "BATCH_IMPORT_SOURCES", notebookUrl, urls }, 240000)
+  );
   const imported = response.result?.imported || 0;
   const failed = response.result?.failed?.length || 0;
   setStatus(t(state.locale, "manager.statusImportDone", { imported, failed }));
@@ -2677,8 +3104,12 @@ async function toggleAutomationEnabled() {
 function renderAllViews() {
   el.searchInput.value = state.searchKey;
   el.tagFilterInput.value = state.tagFilterKey;
+  if (el.documentsSearchInput) el.documentsSearchInput.value = state.documentsSearchKey;
+  if (el.mergeSearchInput) el.mergeSearchInput.value = state.mergeSearchKey;
   el.sortField.value = state.sortField;
   el.pageSize.value = String(state.pageSize);
+  if (el.documentsRowsPerPage) el.documentsRowsPerPage.value = String(state.documentsPageSize);
+  if (el.allSourcesRowsPerPage) el.allSourcesRowsPerPage.value = String(state.allSourcesPageSize);
   el.sortDirection.textContent = t(
     state.locale,
     state.sortDirection === "desc" ? "manager.sortDesc" : "manager.sortAsc"
@@ -2988,9 +3419,71 @@ function registerEventListeners() {
       .catch(showLoadError);
   });
 
+  el.documentsDownloadSelectedButton?.addEventListener("click", () => {
+    withButtonLoading(el.documentsDownloadSelectedButton, isZh() ? "下载中..." : "Downloading...", async () => {
+      downloadSelectedDocuments();
+    }).catch(showActionError);
+  });
+
+  el.documentsSearchInput?.addEventListener("input", () => {
+    state.documentsSearchKey = String(el.documentsSearchInput.value || "").trim().toLowerCase();
+    state.documentsCurrentPage = 1;
+    renderDocuments();
+  });
+
+  el.documentsTypeFilter?.addEventListener("change", () => {
+    state.documentsTypeFilter = String(el.documentsTypeFilter.value || "").trim();
+    state.documentsCurrentPage = 1;
+    renderDocuments();
+  });
+
+  el.documentsRowsPerPage?.addEventListener("change", () => {
+    state.documentsPageSize = parseIntSafe(el.documentsRowsPerPage.value, 20);
+    state.documentsCurrentPage = 1;
+    renderDocuments();
+  });
+
+  el.documentsPrevPage?.addEventListener("click", () => {
+    state.documentsCurrentPage = Math.max(1, state.documentsCurrentPage - 1);
+    renderDocuments();
+  });
+
+  el.documentsNextPage?.addEventListener("click", () => {
+    state.documentsCurrentPage += 1;
+    renderDocuments();
+  });
+
+  el.documentsSelectAll?.addEventListener("change", () => {
+    const shouldSelect = Boolean(el.documentsSelectAll.checked);
+    state.documentsPaged.forEach((doc) => {
+      const key = getDocumentRowKey(doc);
+      if (shouldSelect) state.documentsSelected.add(key);
+      else state.documentsSelected.delete(key);
+    });
+    renderDocuments();
+  });
+
   el.mergeSelectedNowButton.addEventListener("click", () => {
     withButtonLoading(el.mergeSelectedNowButton, isZh() ? "合并中..." : "Merging...", performMergeSelected)
       .catch(showActionError);
+  });
+  el.mergeSearchInput?.addEventListener("input", () => {
+    state.mergeSearchKey = String(el.mergeSearchInput.value || "").trim().toLowerCase();
+    renderMerge();
+  });
+  el.mergeSelectAll?.addEventListener("change", () => {
+    const shouldSelect = Boolean(el.mergeSelectAll.checked);
+    const key = String(state.mergeSearchKey || "").trim().toLowerCase();
+    const rows = (state.notebooks || []).filter((item) => {
+      if (!key) return true;
+      return String(item.title || "").toLowerCase().includes(key)
+        || String(item.url || "").toLowerCase().includes(key);
+    });
+    rows.forEach((item) => {
+      if (shouldSelect) state.mergeSelected.add(item.url);
+      else state.mergeSelected.delete(item.url);
+    });
+    renderMerge();
   });
 
   el.addSelectedFavoritesButton.addEventListener("click", () => {
@@ -3102,6 +3595,22 @@ function registerEventListeners() {
   el.automationToggleEnabledButton.addEventListener("click", () => {
     withButtonLoading(el.automationToggleEnabledButton, isZh() ? "切换中..." : "Switching...", toggleAutomationEnabled)
       .catch(showActionError);
+  });
+
+  el.automationLogsPerPage?.addEventListener("change", () => {
+    state.automationLogsPerPage = parseIntSafe(el.automationLogsPerPage.value, 8);
+    state.automationLogPage = 1;
+    renderAutomation(state.snapshot);
+  });
+
+  el.automationLogPrevButton?.addEventListener("click", () => {
+    state.automationLogPage = Math.max(1, state.automationLogPage - 1);
+    renderAutomation(state.snapshot);
+  });
+
+  el.automationLogNextButton?.addEventListener("click", () => {
+    state.automationLogPage += 1;
+    renderAutomation(state.snapshot);
   });
 
   el.localeSelect.addEventListener("change", async () => {

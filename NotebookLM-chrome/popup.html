@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -8,60 +8,209 @@
 </head>
 <body>
   <main class="popup-shell">
-    <section class="hero-card">
-      <div>
-        <div class="hero-top">
-          <p class="eyebrow" data-i18n="popup.brand"></p>
-          <label class="locale-wrap">
+    <header class="top-bar">
+      <div class="top-bar-main">
+        <div class="app-brand">
+          <div class="brand-mark">
+            <img class="hero-logo" src="icons/icon128.png" alt="空来Ai-NotebookLM辅助器">
+            <span id="versionBadge" class="version-badge"></span>
+          </div>
+          <div class="app-brand-copy">
+            <strong id="popupTitle"></strong>
+            <span id="popupBrandCaption" class="eyebrow"></span>
+          </div>
+        </div>
+
+        <div class="header-main-actions">
+          <label class="locale-wrap locale-wrap-top">
             <select id="localeSelect" aria-label="Language"></select>
           </label>
+          <div class="settings-menu">
+            <button id="settingsToggleBtn" class="icon-button" type="button" aria-label="Settings">&#9881;</button>
+            <div id="settingsDropdown" class="dropdown-content">
+              <div class="dropdown-section-label">General</div>
+              <button id="manageFeaturesBtn" class="dropdown-item" type="button"></button>
+              <button id="manageNotebooksDropdownBtn" class="dropdown-item" type="button"></button>
+
+              <div class="dropdown-section-label">Billing</div>
+              <button id="manageSubscriptionBtn" class="dropdown-item" type="button"></button>
+              <button id="claimPurchaseBtn" class="dropdown-item" type="button"></button>
+              <button id="customSubscriptionBtn" class="dropdown-item" type="button"></button>
+
+              <div class="dropdown-section-label">Support</div>
+              <button id="docsBtn" class="dropdown-item" type="button"></button>
+              <button id="tutorialBtn" class="dropdown-item" type="button"></button>
+              <button id="featureRequestBtn" class="dropdown-item" type="button"></button>
+              <button id="contactUsBtn" class="dropdown-item" type="button"></button>
+              <button id="visitWebsiteBtn" class="dropdown-item" type="button"></button>
+
+              <div class="dropdown-divider"></div>
+              <button id="signOutBtn" class="dropdown-item text-warn" type="button"></button>
+              <button id="deleteAccountBtn" class="dropdown-item text-warn" type="button"></button>
+            </div>
+          </div>
         </div>
-        <h1 data-i18n="popup.titleShort"></h1>
-        <p id="heroSummary" class="hero-summary"></p>
       </div>
-      <span id="timerPill" class="timer-pill"></span>
+
+      <div class="header-actions">
+        <span id="tierPill" class="tier-pill"></span>
+        <button id="upgradeButton" class="primary-button compact-button utility-button" type="button"></button>
+        <button id="openPromptsBtn" class="secondary-button compact-button utility-button" type="button"></button>
+      </div>
+    </header>
+
+    <section class="hero-card">
+      <div class="hero-main">
+        <p id="heroSummary" class="hero-summary"></p>
+        <div class="quick-actions quick-actions-primary">
+          <button id="runNow" class="primary-button small-button" type="button"></button>
+          <button id="openManager" class="primary-button small-button" type="button"></button>
+          <button id="openNotebook" class="secondary-button small-button" type="button"></button>
+          <button id="toggleEnabled" class="secondary-button small-button" type="button"></button>
+        </div>
+      </div>
     </section>
 
     <section class="status-grid">
       <article class="status-card" data-tone="good">
-        <span class="status-label" data-i18n="popup.scheduleStatus"></span>
+        <span id="scheduleStatusLabelText" class="status-label"></span>
         <strong id="scheduleLabel"></strong>
         <p id="scheduleDetail"></p>
       </article>
 
       <article class="status-card" data-tone="muted">
-        <span class="status-label" data-i18n="popup.resultStatus"></span>
+        <span id="resultStatusLabelText" class="status-label"></span>
         <strong id="resultLabel"></strong>
         <p id="resultDetail"></p>
       </article>
 
-      <article class="status-card" data-tone="muted">
-        <span class="status-label" data-i18n="popup.ruleStatus"></span>
+      <article class="status-card status-card-wide" data-tone="muted">
+        <span id="ruleStatusLabelText" class="status-label"></span>
         <strong id="ruleLabel"></strong>
         <p id="ruleDetail"></p>
       </article>
     </section>
 
-    <section class="action-grid">
-      <button id="runNow" class="primary-button" type="button" data-i18n="popup.runNow"></button>
-      <button id="openNotebook" class="secondary-button" type="button" data-i18n="popup.openNotebook"></button>
-      <button id="toggleEnabled" class="secondary-button" type="button"></button>
-      <button id="openManager" class="secondary-button" type="button" data-i18n="popup.openManager"></button>
-      <button id="openOptions" class="ghost-button" type="button" data-i18n="popup.openOptions"></button>
+    <section class="panel-card">
+      <div class="panel-head">
+        <div>
+          <span id="currentPageLabel" class="status-label"></span>
+          <strong id="currentPageTitle"></strong>
+        </div>
+        <div class="panel-head-actions">
+          <button id="captureCurrentPage" class="secondary-button compact-button" type="button"></button>
+          <button id="openOptions" class="ghost-button compact-button" type="button"></button>
+        </div>
+      </div>
+      <p id="currentPageUrl" class="panel-subtle"></p>
+      <label class="field-block">
+        <span id="targetNotebookLabel" class="field-label"></span>
+        <select id="popupNotebookSelect"></select>
+      </label>
+      <div class="quick-actions">
+        <button id="importCurrentPage" class="primary-button small-button" type="button"></button>
+        <button id="quickImportCurrentPage" class="secondary-button small-button" type="button"></button>
+      </div>
     </section>
 
-    <section class="log-card">
-      <div class="log-header">
-        <span class="status-label" data-i18n="popup.logsTitle"></span>
-        <span id="buildInfo" class="build-info"></span>
+    <section id="promptPanel" class="panel-card prompt-panel-inline">
+      <div class="panel-head">
+        <div>
+          <span id="promptLibraryLabel" class="status-label"></span>
+          <strong id="promptLibraryTitle"></strong>
+        </div>
+        <button id="createPromptButton" class="secondary-button compact-button" type="button"></button>
       </div>
-      <ul id="logList" class="log-list">
-        <li class="empty-log" data-i18n="popup.logsEmpty"></li>
-      </ul>
+      <div class="prompt-toolbar">
+        <input id="promptSearchInput" type="text">
+        <select id="promptFolderFilter"></select>
+      </div>
+      <div id="promptList" class="prompt-list"></div>
+    </section>
+
+    <section class="account-card">
+      <div class="account-head">
+        <div>
+          <span id="accountLabel" class="status-label"></span>
+          <strong id="accountEmail"></strong>
+        </div>
+        <span id="accountPlan" class="account-plan"></span>
+      </div>
+      <div class="usage-grid">
+        <article class="usage-card">
+          <span id="usageImportLabel" class="usage-label"></span>
+          <strong id="usageImportValue"></strong>
+        </article>
+        <article class="usage-card">
+          <span id="usageExportLabel" class="usage-label"></span>
+          <strong id="usageExportValue"></strong>
+        </article>
+        <article class="usage-card">
+          <span id="usageSourceViewLabel" class="usage-label"></span>
+          <strong id="usageSourceViewValue"></strong>
+        </article>
+        <article class="usage-card">
+          <span id="usageCaptureLabel" class="usage-label"></span>
+          <strong id="usageCaptureValue"></strong>
+        </article>
+      </div>
     </section>
 
     <p id="popupStatus" class="popup-status"></p>
   </main>
+
+  <dialog id="infoDialog" class="popup-dialog">
+    <form method="dialog" class="popup-dialog-form">
+      <div class="dialog-head">
+        <h3 id="infoDialogTitle"></h3>
+        <button id="infoDialogCloseTop" class="secondary-button compact-button" type="button">&times;</button>
+      </div>
+      <p id="infoDialogMessage" class="panel-subtle"></p>
+      <div class="dialog-actions">
+        <span></span>
+        <div class="dialog-actions-right">
+          <button id="infoDialogConfirm" class="primary-button" type="button"></button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="promptDialog" class="popup-dialog">
+    <form method="dialog" class="popup-dialog-form">
+      <div class="dialog-head">
+        <h3 id="promptDialogTitle"></h3>
+        <button id="promptDialogClose" class="secondary-button compact-button" type="button">&times;</button>
+      </div>
+      <label class="field-block">
+        <span id="promptTitleLabel" class="field-label"></span>
+        <input id="promptTitleInput" type="text">
+      </label>
+      <label class="field-block">
+        <span id="promptFolderLabel" class="field-label"></span>
+        <input id="promptFolderInput" type="text">
+      </label>
+      <label class="field-block">
+        <span id="promptTagsLabel" class="field-label"></span>
+        <input id="promptTagsInput" type="text">
+      </label>
+      <label class="field-block">
+        <span id="promptContentLabel" class="field-label"></span>
+        <textarea id="promptContentInput" rows="8"></textarea>
+      </label>
+      <label class="checkbox-line">
+        <input id="promptFavoriteInput" type="checkbox">
+        <span id="promptFavoriteLabel"></span>
+      </label>
+      <div class="dialog-actions">
+        <button id="promptDeleteButton" class="ghost-button" type="button"></button>
+        <div class="dialog-actions-right">
+          <button id="promptCancelButton" class="secondary-button" type="button"></button>
+          <button id="promptSaveButton" class="primary-button" type="button"></button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
   <script type="module" src="popup.js"></script>
 </body>
 </html>

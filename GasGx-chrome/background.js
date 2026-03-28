@@ -117,7 +117,7 @@ async function saveSocialPost(payload) {
     synced_at_utc: new Date().toISOString()
   };
 
-  const primaryResult = await insertRowsToTable({
+  const primaryResult = await insertRowsWithMissingColumnRetry({
     table: SUPABASE_CONFIG.table,
     onConflict: SUPABASE_CONFIG.onConflict,
     rows: [row]
@@ -132,12 +132,10 @@ async function saveSocialPost(payload) {
 
   console.warn(`${LOG_PREFIX} Primary table unavailable, falling back to ${FALLBACK_QUEUE_TABLE}:`, primaryError);
   const queuePayload = buildScrapeQueuePayload(payload, postUrl, defaultPublisher);
-  const queueResult = await insertRowsToTable({
+  const queueResult = await insertRowsWithMissingColumnRetry({
     table: FALLBACK_QUEUE_TABLE,
     rows: [queuePayload]
   });
-  if (queueResult.ok) return queueResult;
-
   return queueResult;
 }
 
@@ -156,6 +154,87 @@ function buildScrapeQueuePayload(payload, postUrl, publisher) {
     source_note: String(payload?.platform || "").trim(),
     submitted_at: new Date().toISOString()
   };
+}
+
+function getMissingColumnName(errorText, expectedTable = "") {
+  const { message } = parsePostgrestError(errorText);
+  const match = message.match(
+    /Could not find the ['"`]?([^'"`]+)['"`]? column of ['"`]?([^'"`]+)['"`]? in the schema cache/i
+  );
+  if (!match) return "";
+
+  const [, column, table] = match;
+  if (expectedTable && !isSameTableName(table, expectedTable)) return "";
+  return column || "";
+}
+
+function parsePostgrestError(errorText) {
+  const raw = String(errorText || "").trim();
+  if (!raw) return { raw: "", message: "", parsed: null };
+
+  const candidates = [raw];
+  const firstBrace = raw.indexOf("{");
+  const lastBrace = raw.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    candidates.push(raw.slice(firstBrace, lastBrace + 1));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!parsed || typeof parsed !== "object") continue;
+      return {
+        raw,
+        message: String(parsed?.message || raw),
+        parsed
+      };
+    } catch (_) {
+      // try next candidate
+    }
+  }
+
+  return { raw, message: raw, parsed: null };
+}
+
+function normalizeTableName(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^"+|"+$/g, "")
+    .replace(/^'+|'+$/g, "")
+    .split(".")
+    .pop()
+    ?.toLowerCase() || "";
+}
+
+function isSameTableName(a, b) {
+  return normalizeTableName(a) === normalizeTableName(b);
+}
+
+async function insertRowsWithMissingColumnRetry({ table, onConflict = "", rows, maxRetries = 5 }) {
+  let currentRows = (rows || []).map((row) => ({ ...(row || {}) }));
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const result = await insertRowsToTable({
+      table,
+      onConflict,
+      rows: currentRows
+    });
+    if (result.ok) return result;
+
+    const missingColumn = getMissingColumnName(result.error, table);
+    if (!missingColumn) return result;
+
+    const hasMissingColumn = currentRows.some((row) => Object.prototype.hasOwnProperty.call(row, missingColumn));
+    if (!hasMissingColumn) return result;
+
+    console.warn(`${LOG_PREFIX} ${table} missing column "${missingColumn}", retrying without it.`);
+    currentRows = currentRows.map((row) => {
+      const next = { ...row };
+      delete next[missingColumn];
+      return next;
+    });
+  }
+
+  return { ok: false, error: `Insert failed for table ${table} after ${maxRetries + 1} attempts` };
 }
 
 async function insertRowsToTable({ table, onConflict = "", rows }) {

@@ -1,0 +1,30 @@
+{
+  "source": {
+    "repoPath": "D:\\code\\Python\\Collection\\gasgx\\gasgx_article_content_collection_module",
+    "reference": [
+      "config.py",
+      "D:\\code\\Python\\Collection\\shared\\common\\xfyun_spark.py"
+    ]
+  },
+  "provider": "xfyun_spark",
+  "envKeys": {
+    "enabled": "XFYUN_SPARK_ENABLED",
+    "url": "XFYUN_SPARK_URL",
+    "app_id": "XFYUN_SPARK_APP_ID",
+    "api_key": "XFYUN_SPARK_API_KEY",
+    "api_secret": "XFYUN_SPARK_API_SECRET",
+    "domain": "XFYUN_SPARK_DOMAIN",
+    "temperature": "XFYUN_SPARK_TEMPERATURE",
+    "max_tokens": "XFYUN_SPARK_MAX_TOKENS"
+  },
+  "settings": {
+    "enabled": true,
+    "url": "",
+    "app_id": "",
+    "api_key": "",
+    "api_secret": "",
+    "domain": "generalv3.5",
+    "temperature": 0.3,
+    "max_tokens": 512
+  }
+}

@@ -10,8 +10,8 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="logo">N</div>
-        <div>
+        <img class="logo" src="icons/icon128.png" alt="空来Ai-NotebookLM辅助器">
+        <div class="brand-meta">
           <p class="brand-caption" data-i18n="manager.brandCaption"></p>
           <h1 data-i18n="common.appName"></h1>
         </div>
@@ -238,12 +238,26 @@
             </div>
             <div class="batch-actions">
               <button id="refreshDocuments" class="secondary" type="button" data-i18n="manager.refreshDocuments"></button>
+              <button id="documentsDownloadSelected" class="secondary" type="button" data-i18n="manager.downloadSources"></button>
             </div>
+          </div>
+          <div class="documents-toolbar">
+            <label>
+              <span data-i18n="manager.allSourcesSearch"></span>
+              <input id="documentsSearchInput" type="text" data-i18n-placeholder="manager.searchPlaceholder">
+            </label>
+            <label>
+              <span data-i18n="manager.docColType"></span>
+              <select id="documentsTypeFilter">
+                <option value="" data-i18n="manager.documentsTypeAll"></option>
+              </select>
+            </label>
           </div>
           <div class="table-wrap">
             <table class="documents-table">
               <thead>
                 <tr>
+                  <th><input id="documentsSelectAll" type="checkbox" aria-label="Select all documents"></th>
                   <th data-i18n="manager.docColNotebook"></th>
                   <th data-i18n="manager.docColTitle"></th>
                   <th data-i18n="manager.docColType"></th>
@@ -252,9 +266,26 @@
                 </tr>
               </thead>
               <tbody id="documentsBody">
-                <tr><td colspan="5" class="empty" data-i18n="manager.tableEmptyLoading"></td></tr>
+                <tr><td colspan="6" class="empty" data-i18n="manager.tableEmptyLoading"></td></tr>
               </tbody>
             </table>
+          </div>
+          <div class="all-sources-pagination">
+            <span id="documentsSelectedCount" class="helper"></span>
+            <div class="pagination">
+              <label>
+                <span data-i18n="manager.pageSize"></span>
+                <select id="documentsRowsPerPage">
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                </select>
+              </label>
+              <span id="documentsPageInfo" class="helper"></span>
+              <button id="documentsPrevPage" class="secondary" type="button" data-i18n="manager.pagePrev"></button>
+              <button id="documentsNextPage" class="secondary" type="button" data-i18n="manager.pageNext"></button>
+            </div>
           </div>
         </article>
       </section>
@@ -267,24 +298,26 @@
               <p class="helper" data-i18n="manager.mergeDesc"></p>
             </div>
           </div>
-          <div class="import-grid">
+          <div class="merge-toolbar">
             <label>
               <span data-i18n="manager.mergeNewTitle"></span>
               <input id="mergeTitleInput" type="text" data-i18n-placeholder="manager.mergeNewTitlePlaceholder">
+            </label>
+            <label>
+              <span data-i18n="manager.mergeSearchLabel"></span>
+              <input id="mergeSearchInput" type="text" data-i18n-placeholder="manager.mergeSearchPlaceholder">
             </label>
             <label class="checkbox-inline">
               <input id="mergeDeleteOriginal" type="checkbox">
               <span data-i18n="manager.mergeDeleteOriginal"></span>
             </label>
-          </div>
-          <div class="batch-actions">
             <button id="mergeSelectedNow" class="primary" type="button" data-i18n="manager.mergeNow"></button>
           </div>
           <div class="table-wrap">
             <table class="merge-table">
               <thead>
                 <tr>
-                  <th></th>
+                  <th><input id="mergeSelectAll" type="checkbox" aria-label="Select all notebooks"></th>
                   <th data-i18n="manager.tableColTitle"></th>
                   <th data-i18n="manager.tableColSources"></th>
                 </tr>
@@ -293,6 +326,9 @@
                 <tr><td colspan="3" class="empty" data-i18n="manager.tableEmptyLoading"></td></tr>
               </tbody>
             </table>
+          </div>
+          <div class="merge-footer">
+            <span id="mergeSelectedInfo" class="helper">-</span>
           </div>
         </article>
       </section>
@@ -378,8 +414,9 @@
       </section>
 
       <section class="view" data-view="bulk">
-        <article class="panel">
+        <article class="panel bulk-panel">
           <h2 data-i18n="manager.bulkTitle"></h2>
+          <p class="helper bulk-desc" data-i18n="manager.bulkDesc"></p>
           <div class="import-grid">
             <label>
               <span data-i18n="manager.targetNotebook"></span>
@@ -522,6 +559,21 @@
           <ul id="automationLogList" class="feed-list">
             <li class="empty" data-i18n="manager.logsEmpty"></li>
           </ul>
+          <div class="automation-log-pagination">
+            <label>
+              <span data-i18n="manager.pageSize"></span>
+              <select id="automationLogsPerPage">
+                <option value="8">8</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+              </select>
+            </label>
+            <div class="pagination">
+              <span id="automationLogPageInfo" class="helper"></span>
+              <button id="automationLogPrev" class="secondary" type="button" data-i18n="manager.pagePrev"></button>
+              <button id="automationLogNext" class="secondary" type="button" data-i18n="manager.pageNext"></button>
+            </div>
+          </div>
         </article>
       </section>
 

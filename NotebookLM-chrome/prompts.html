@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>空来Ai-NotebookLM辅助器 | 提示词</title>
+  <link rel="stylesheet" href="prompts.css">
+</head>
+<body>
+  <main class="prompts-shell">
+    <header class="page-header">
+      <div class="header-brand">
+        <img class="brand-logo" src="icons/icon128.png" alt="空来Ai-NotebookLM辅助器">
+        <div class="header-copy">
+          <strong id="pageTitle"></strong>
+          <span id="pageCaption"></span>
+          <span id="buildInfo" class="build-inline"></span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <label class="locale-wrap">
+          <select id="localeSelect" aria-label="Language"></select>
+        </label>
+        <button id="backToPopup" class="secondary-button" type="button"></button>
+      </div>
+    </header>
+
+    <section class="hero-card">
+      <div>
+        <span class="eyebrow" id="heroEyebrow"></span>
+        <h1 id="heroTitle"></h1>
+        <p id="heroSummary"></p>
+      </div>
+      <div class="hero-metrics">
+        <article class="metric-card">
+          <span id="metricCountLabel" class="eyebrow"></span>
+          <strong id="metricCountValue"></strong>
+        </article>
+        <article class="metric-card">
+          <span id="metricFolderLabel" class="eyebrow"></span>
+          <strong id="metricFolderValue"></strong>
+        </article>
+      </div>
+    </section>
+
+    <section class="toolbar-card">
+      <div class="toolbar-row">
+        <input id="promptSearchInput" type="text">
+        <select id="promptFolderFilter"></select>
+        <button id="createPromptButton" class="primary-button" type="button"></button>
+      </div>
+    </section>
+
+    <section class="content-card">
+      <div class="section-head">
+        <div>
+          <span class="eyebrow" id="listEyebrow"></span>
+          <strong id="listTitle"></strong>
+        </div>
+      </div>
+      <div id="promptList" class="prompt-list"></div>
+    </section>
+
+    <p id="pageStatus" class="page-status"></p>
+  </main>
+
+  <dialog id="promptDialog" class="prompt-dialog">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head">
+        <h3 id="promptDialogTitle"></h3>
+        <button id="promptDialogClose" class="secondary-button compact-button" type="button">&times;</button>
+      </div>
+
+      <label class="field-block">
+        <span id="promptTitleLabel" class="eyebrow"></span>
+        <input id="promptTitleInput" type="text">
+      </label>
+
+      <label class="field-block">
+        <span id="promptFolderLabel" class="eyebrow"></span>
+        <input id="promptFolderInput" type="text">
+      </label>
+
+      <label class="field-block">
+        <span id="promptTagsLabel" class="eyebrow"></span>
+        <input id="promptTagsInput" type="text">
+      </label>
+
+      <label class="field-block">
+        <span id="promptContentLabel" class="eyebrow"></span>
+        <textarea id="promptContentInput" rows="10"></textarea>
+      </label>
+
+      <label class="checkbox-line">
+        <input id="promptFavoriteInput" type="checkbox">
+        <span id="promptFavoriteLabel"></span>
+      </label>
+
+      <div class="dialog-actions">
+        <button id="promptDeleteButton" class="ghost-button" type="button"></button>
+        <div class="dialog-actions-right">
+          <button id="promptCancelButton" class="secondary-button" type="button"></button>
+          <button id="promptSaveButton" class="primary-button" type="button"></button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="prompts.js"></script>
+</body>
+</html>
